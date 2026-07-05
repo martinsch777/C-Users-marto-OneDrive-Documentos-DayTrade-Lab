@@ -1,0 +1,169 @@
+{
+  "project": {
+    "timezone": "America/New_York",
+    "output_dir": "outputs/daytrade",
+    "log_dir": "logs"
+  },
+  "security": {
+    "live_trading_enabled": false,
+    "broker_connected": false,
+    "orders_sent": false,
+    "paper_internal_enabled": false,
+    "paper_broker_enabled": false
+  },
+  "edge_discovery": {
+    "forward_collection_enabled": false,
+    "public_market_data_only": true,
+    "allow_private_api_keys": false,
+    "allow_real_leverage": false
+  },
+  "microstructure_collector": {
+    "enabled_topics": [
+      "ticker",
+      "trades",
+      "orderbook",
+      "liquidation",
+      "kline"
+    ],
+    "recv_timeout_seconds": 5,
+    "subscription_timeout_seconds": 15,
+    "no_data_timeout_seconds": 30,
+    "max_reconnect_backoff_seconds": 60
+  },
+  "data": {
+    "default_timeframe": "15min",
+    "source_timezone": null,
+    "drop_incomplete_candle": true,
+    "allow_missing_bars": false,
+    "equity_session_start": "09:30",
+    "equity_session_end": "16:00",
+    "calendar": {
+      "timezone": "America/New_York",
+      "regular_open": "09:30",
+      "regular_close": "16:00",
+      "holidays": [],
+      "early_closes": {}
+    }
+  },
+  "execution": {
+    "spread_bps": 2.0,
+    "slippage_bps": 1.5,
+    "commission_bps": 1.0,
+    "minimum_commission": 0.0,
+    "latency_bars": 0,
+    "limit_expiry_bars": 3,
+    "max_volume_participation": 0.02,
+    "allow_partial_fills": true,
+    "same_bar_policy": "stop_first",
+    "enforce_session_entry": true,
+    "force_flat_before_session_end": true,
+    "session_timezone": "America/New_York",
+    "session_start": "09:30",
+    "session_end": "16:00",
+    "session_exit_buffer_minutes": 1
+  },
+  "crypto_cost_scenarios": {
+    "low": {
+      "spread_bps": 0.5,
+      "slippage_bps": 0.5,
+      "commission_bps": 2.0
+    },
+    "normal": {
+      "spread_bps": 1.0,
+      "slippage_bps": 1.0,
+      "commission_bps": 10.0
+    },
+    "high": {
+      "spread_bps": 3.0,
+      "slippage_bps": 3.0,
+      "commission_bps": 10.0
+    },
+    "extreme": {
+      "spread_bps": 8.0,
+      "slippage_bps": 8.0,
+      "commission_bps": 20.0
+    }
+  },
+  "risk": {
+    "initial_equity": 100000.0,
+    "risk_per_trade_pct": 0.005,
+    "max_daily_loss_pct": 0.015,
+    "max_weekly_loss_pct": 0.04,
+    "max_trades_per_day": 5,
+    "max_consecutive_losses": 3,
+    "max_exposure_pct": 0.30,
+    "max_position_notional": 25000.0,
+    "minimum_risk_reward": 1.5,
+    "max_spread_bps": 8.0,
+    "min_relative_volume": 0.8,
+    "max_atr_pct": 0.05,
+    "kill_switch": false
+  },
+  "psychology_guard": {
+    "allowed_setups": [
+      "opening_range_breakout",
+      "opening_range_fvg",
+      "vwap_pullback",
+      "relative_volume_momentum",
+      "extreme_mean_reversion",
+      "trend_day_continuation"
+    ],
+    "loss_cooldown_minutes": 30,
+    "trading_window_start": "09:35",
+    "trading_window_end": "15:30",
+    "max_trades_per_hour": 2,
+    "block_fomo": true,
+    "block_unfavorable_regime": true
+  },
+  "strategies": {
+    "opening_range_breakout": {
+      "opening_range_minutes": 30,
+      "minimum_range_atr": 0.5,
+      "maximum_range_atr": 3.0,
+      "minimum_relative_volume": 1.2,
+      "risk_reward": 2.0
+    },
+    "opening_range_fvg": {
+      "opening_range_minutes": 5,
+      "session_start": "09:30",
+      "session_end": "16:00",
+      "candidate_end": "15:30",
+      "minimum_range_atr": 0.5,
+      "maximum_range_atr": 5.0,
+      "minimum_displacement_atr": 0.5,
+      "minimum_fvg_gap_atr": 0.2,
+      "structure_lookback": 20,
+      "stop_mode": "breakout_candle",
+      "stop_structure_lookback": 5,
+      "stop_buffer_atr": 0.0,
+      "risk_reward": 2.0,
+      "max_entry_gap_pct": 0.005,
+      "max_trades_per_day": 1
+    },
+    "vwap_pullback": {
+      "ema_fast": 9,
+      "ema_slow": 20,
+      "vwap_tolerance_atr": 0.25,
+      "risk_reward": 1.8
+    },
+    "relative_volume_momentum": {
+      "lookback": 20,
+      "minimum_relative_volume": 1.5,
+      "maximum_extension_atr": 2.0,
+      "risk_reward": 1.8
+    },
+    "extreme_mean_reversion": {
+      "rsi_period": 14,
+      "rsi_low": 25,
+      "rsi_high": 75,
+      "minimum_extension_atr": 2.0,
+      "risk_reward": 1.5
+    },
+    "trend_day_continuation": {
+      "ema_fast": 9,
+      "ema_slow": 20,
+      "minimum_relative_volume": 1.0,
+      "risk_reward": 2.0
+    }
+  }
+}

@@ -1,0 +1,14 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+data/raw/
+data/crypto/
+data/forward_microstructure/
+data/crypto/binance/.archive_cache/
+logs/
+outputs/
