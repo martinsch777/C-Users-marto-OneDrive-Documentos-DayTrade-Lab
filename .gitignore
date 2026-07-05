@@ -12,3 +12,5 @@ data/forward_microstructure/
 data/crypto/binance/.archive_cache/
 logs/
 outputs/
+
+data/synthetic/
