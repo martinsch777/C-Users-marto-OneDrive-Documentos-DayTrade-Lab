@@ -96,6 +96,23 @@ python -m src.cli backtest `
   --asset-class crypto
 ```
 
+Auditar un CSV equity/ETF de 1 minuto antes de correr rentabilidad:
+
+```powershell
+python -m src.cli audit-data `
+  --csv "data\raw\QQQ_1min.csv" `
+  --symbol QQQ `
+  --timeframe 1min `
+  --asset-class equity `
+  --source-timezone America/New_York
+```
+
+El auditor genera JSON/CSV/Markdown en `outputs\data_audit\<SYMBOL>\` e indica
+si el dataset es apto para Opening Range + FVG. No ejecuta backtests, no conecta
+brokers, no usa credenciales y no envía órdenes. Usa calendario US equity local
+versionado con feriados, early closes y DST. Detalle:
+[docs/EQUITY_DATA_AUDIT.md](docs/EQUITY_DATA_AUDIT.md).
+
 El CSV debe contener `timestamp,open,high,low,close,volume`. Los timestamps se
 normalizan a UTC. También se aceptan `datetime`, `date`, `time` u `open_time`
 como nombre de la columna temporal.

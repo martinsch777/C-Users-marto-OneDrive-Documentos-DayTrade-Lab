@@ -18,11 +18,18 @@ from src.backtesting import (
 )
 from src.config import load_config
 from src.data import (
+    AlpacaDownloadError,
+    AlpacaEquityIntradayDownloader,
     BinancePublicDataProvider,
+    DownloadRequest,
     EquitySessionCalendar,
+    audit_equity_intraday_csv,
+    build_dataset_manifest,
     load_csv,
     normalize_ohlcv,
     validate_ohlcv,
+    write_dataset_manifest,
+    write_equity_intraday_audit_report,
 )
 from src.data.providers import save_local
 from src.replay import MarketReplay
@@ -368,6 +375,147 @@ def command_backtest(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_audit_data(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    data_config = config.section("data")
+    calendar = EquitySessionCalendar.from_config(
+        data_config.get("calendar", {}),
+        timezone=str(
+            config.section("project").get(
+                "timezone",
+                "America/New_York",
+            )
+        ),
+        regular_open=str(data_config.get("equity_session_start", "09:30")),
+        regular_close=str(data_config.get("equity_session_end", "16:00")),
+    )
+    source_timezone = args.source_timezone
+    if source_timezone is None:
+        source_timezone = data_config.get("source_timezone")
+    report = audit_equity_intraday_csv(
+        args.csv,
+        args.symbol,
+        args.timeframe,
+        asset_class=args.asset_class,
+        source_timezone=source_timezone,
+        calendar=calendar,
+    )
+    output_dir = args.output_dir or (
+        Path("outputs") / "data_audit" / report.symbol
+    )
+    paths = write_equity_intraday_audit_report(report, output_dir)
+    verdict = "APTO" if report.apt_for_or_fvg_backtest else "NO APTO"
+    print(f"Dataset {report.symbol} {report.timeframe}: {verdict} para OR/FVG")
+    print(f"Filas={report.rows_total}; sesiones={report.sessions}; faltantes={report.missing_bars}; fuera_RTH={report.outside_rth_bars}")
+    if "CSV_NOT_FOUND" in report.critical_warnings:
+        print(f"CSV_NOT_FOUND: {Path(args.csv)}")
+    if report.critical_warnings:
+        print("Advertencias críticas: " + ", ".join(report.critical_warnings))
+    print(f"JSON: {paths['json'].resolve()}")
+    print(f"CSV: {paths['csv'].resolve()}")
+    print(f"Markdown: {paths['markdown'].resolve()}")
+    print("Safety state: live trading=False, broker connected=False, orders sent=False, api_keys_used=False")
+    if args.fail_on_not_fit and not report.apt_for_or_fvg_backtest:
+        return 2
+    return 0
+
+
+def command_calendar_diagnostics(args: argparse.Namespace) -> int:
+    if args.calendar != "us_equity":
+        raise ValueError("Only calendar='us_equity' is supported")
+    calendar = EquitySessionCalendar.from_config({"source": args.calendar})
+    rows = calendar.diagnostics(
+        pd.Timestamp(args.start).date(),
+        pd.Timestamp(args.end).date(),
+        "1min",
+    )
+    if args.format == "json":
+        print(json.dumps(rows, indent=2))
+    else:
+        print(pd.DataFrame(rows).to_csv(index=False).strip())
+    print("Safety state: live trading=False, broker connected=False, orders sent=False")
+    return 0
+
+
+def _print_download_result(result) -> None:
+    print(
+        json.dumps(
+            result.to_record(),
+            indent=2,
+        )
+    )
+
+
+def command_download_equity_intraday(args: argparse.Namespace) -> int:
+    if args.provider != "alpaca":
+        print("UNSUPPORTED_PROVIDER: only alpaca is supported")
+        print("Safety state: live trading=False, broker connected=False, orders sent=False")
+        return 2
+    downloader = AlpacaEquityIntradayDownloader()
+    results = []
+    try:
+        for symbol in args.symbols:
+            request = DownloadRequest(
+                symbol=symbol,
+                start=args.start,
+                end=args.end,
+                interval=args.interval,
+                feed=args.feed,
+                adjustment=args.adjustment,
+                output_dir=args.output_dir,
+                source_timezone=args.source_timezone,
+                rth_only=args.rth_only,
+            )
+            if args.dry_run:
+                result = downloader.dry_run(request)
+                print(f"DRY_RUN endpoint={downloader.build_url(request)}")
+                print(f"DRY_RUN output_file={result.output_file}")
+            else:
+                result = downloader.download(request)
+                audit_report = None
+                if args.audit_after_download or args.write_manifest:
+                    report = audit_equity_intraday_csv(
+                        result.output_file,
+                        result.symbol,
+                        "1min",
+                        asset_class="equity",
+                        source_timezone=args.source_timezone,
+                        calendar=EquitySessionCalendar.from_config({"source": "us_equity"}),
+                    )
+                    audit_report = report
+                    result = type(result)(
+                        **{
+                            **result.to_record(),
+                            "audit_apt_for_or_fvg_backtest": report.apt_for_or_fvg_backtest,
+                            "audit_critical_warnings": report.critical_warnings,
+                        }
+                    )
+                    if not report.apt_for_or_fvg_backtest:
+                        print(
+                            f"AUDIT_NOT_FIT {result.symbol}: "
+                            + ",".join(report.critical_warnings)
+                        )
+                if args.write_manifest:
+                    manifest = build_dataset_manifest(
+                        result,
+                        audit_report=audit_report,
+                        source_timezone=args.source_timezone,
+                    )
+                    manifest_path = write_dataset_manifest(
+                        manifest,
+                        args.manifest_dir,
+                    )
+                    print(f"MANIFEST: {manifest_path.resolve()}")
+            _print_download_result(result)
+            results.append(result)
+    except AlpacaDownloadError as exc:
+        print(f"{exc.code}: {exc}")
+        print("Safety state: live trading=False, broker connected=False, orders sent=False")
+        return 2
+    print("Safety state: live trading=False, broker connected=False, orders sent=False")
+    return 0
+
+
 def command_download_binance(args: argparse.Namespace) -> int:
     provider = BinancePublicDataProvider()
     frame = provider.fetch(
@@ -425,6 +573,74 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run only the selected strategy instead of the full registry",
     )
     backtest.set_defaults(func=command_backtest)
+
+    audit = subparsers.add_parser(
+        "audit-data",
+        help="Audit a local 1-minute equity/ETF OHLCV CSV without running backtests",
+    )
+    audit.add_argument("--csv", required=True)
+    audit.add_argument("--symbol", required=True)
+    audit.add_argument(
+        "--timeframe",
+        choices=["1min", "5min", "15min", "30min", "1h"],
+        default="1min",
+    )
+    audit.add_argument(
+        "--asset-class",
+        choices=["equity"],
+        default="equity",
+    )
+    audit.add_argument(
+        "--source-timezone",
+        help="Required when timestamps in the CSV are naive, e.g. America/New_York",
+    )
+    audit.add_argument(
+        "--output-dir",
+        help="Directory for JSON/CSV/Markdown audit reports",
+    )
+    audit.add_argument(
+        "--fail-on-not-fit",
+        action="store_true",
+        help="Return exit code 2 when the dataset is not fit for OR/FVG backtests",
+    )
+    audit.set_defaults(func=command_audit_data)
+
+    calendar = subparsers.add_parser(
+        "calendar-diagnostics",
+        help="Print expected US equity RTH sessions for a date range",
+    )
+    calendar.add_argument("--calendar", choices=["us_equity"], default="us_equity")
+    calendar.add_argument("--start", required=True)
+    calendar.add_argument("--end", required=True)
+    calendar.add_argument("--format", choices=["csv", "json"], default="csv")
+    calendar.set_defaults(func=command_calendar_diagnostics)
+
+    equity_download = subparsers.add_parser(
+        "download-equity-intraday",
+        help="Download Alpaca Market Data stock bars into audit-data compatible CSVs",
+    )
+    equity_download.add_argument("--provider", choices=["alpaca"], default="alpaca")
+    equity_download.add_argument("--symbols", nargs="+", required=True)
+    equity_download.add_argument("--start", required=True)
+    equity_download.add_argument("--end", required=True)
+    equity_download.add_argument("--interval", default="1min")
+    equity_download.add_argument("--feed", choices=["sip", "iex"], required=True)
+    equity_download.add_argument(
+        "--adjustment",
+        choices=["raw", "split", "dividend", "all"],
+        default="raw",
+    )
+    equity_download.add_argument("--output-dir", default=str(Path("data") / "raw"))
+    equity_download.add_argument("--source-timezone", default="America/New_York")
+    equity_download.add_argument("--dry-run", action="store_true")
+    equity_download.add_argument("--audit-after-download", action="store_true")
+    equity_download.add_argument("--write-manifest", action="store_true")
+    equity_download.add_argument(
+        "--manifest-dir",
+        default=str(Path("data") / "manifests"),
+    )
+    equity_download.add_argument("--rth-only", action="store_true")
+    equity_download.set_defaults(func=command_download_equity_intraday)
 
     download = subparsers.add_parser(
         "download-binance",

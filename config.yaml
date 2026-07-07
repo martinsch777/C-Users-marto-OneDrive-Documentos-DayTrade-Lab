@@ -38,6 +38,7 @@
     "equity_session_start": "09:30",
     "equity_session_end": "16:00",
     "calendar": {
+      "source": "us_equity",
       "timezone": "America/New_York",
       "regular_open": "09:30",
       "regular_close": "16:00",
