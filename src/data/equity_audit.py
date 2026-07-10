@@ -10,6 +10,10 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from .loader import CANONICAL_COLUMNS, TIMESTAMP_ALIASES, _rename_columns
+from .quality_overrides import (
+    QualityOverrides,
+    load_quality_overrides,
+)
 from .sessions import EquitySessionCalendar
 
 
@@ -38,6 +42,22 @@ class SessionAudit:
     early_close: bool
     discarded: bool
     discard_reason: str
+
+    def to_record(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ExcludedSessionAudit:
+    symbol: str
+    date: str
+    reason: str
+    missing_timestamps: list[str]
+    source: str
+    policy: str
+    created_by: str
+    expected_bars: int
+    bars_removed: int
 
     def to_record(self) -> dict[str, Any]:
         return asdict(self)
@@ -78,6 +98,8 @@ class EquityIntradayAuditReport:
     sessions_with_too_few_bars: int
     sessions_with_unexpected_bar_count: int
     discarded_days: int
+    total_excluded_sessions: int = 0
+    rows_after_excluded_sessions: int = 0
     critical_warnings: list[str] = field(default_factory=list)
     calendar_name: str = ""
     calendar_source: str = ""
@@ -94,11 +116,15 @@ class EquityIntradayAuditReport:
     sha256: str = ""
     file_bytes: int = 0
     session_details: list[SessionAudit] = field(default_factory=list)
+    excluded_sessions: list[ExcludedSessionAudit] = field(default_factory=list)
 
     def to_record(self) -> dict[str, Any]:
         data = asdict(self)
         data["session_details"] = [
             session.to_record() for session in self.session_details
+        ]
+        data["excluded_sessions"] = [
+            session.to_record() for session in self.excluded_sessions
         ]
         return data
 
@@ -153,6 +179,8 @@ def _parse_source_timestamps(
         else:
             aware_count += 1
         parsed.append(timestamp.tz_convert("UTC"))
+    if not parsed:
+        return pd.Series(pd.DatetimeIndex([], tz="UTC"), index=values.index), "timezone_aware"
     if naive_count and aware_count:
         status = "mixed_timezone_aware_and_localized"
     elif naive_count:
@@ -178,6 +206,59 @@ def _classify_outside_rth(
     return "inside"
 
 
+def _iso_session_dates_from_local_times(local_times: pd.Series) -> set[str]:
+    return {
+        timestamp.date().isoformat()
+        for timestamp in local_times
+        if pd.notna(timestamp)
+    }
+
+
+def _session_date_strings_from_local_times(local_times: pd.Series) -> pd.Series:
+    return pd.Series(
+        [
+            timestamp.date().isoformat() if pd.notna(timestamp) else ""
+            for timestamp in local_times
+        ],
+        index=local_times.index,
+    )
+
+
+def _session_dates_from_local_times(local_times: pd.Series) -> pd.Series:
+    return pd.Series(
+        [
+            timestamp.date() if pd.notna(timestamp) else None
+            for timestamp in local_times
+        ],
+        index=local_times.index,
+    )
+
+
+def _session_counts_from_utc_index(
+    timestamps: pd.DatetimeIndex,
+    timezone_name: str,
+) -> dict[Any, int]:
+    counts: dict[Any, int] = {}
+    local_zone = ZoneInfo(timezone_name)
+    for timestamp in timestamps:
+        session_date = timestamp.tz_convert(local_zone).date()
+        counts[session_date] = counts.get(session_date, 0) + 1
+    return counts
+
+
+def _filter_utc_index_excluding_local_dates(
+    timestamps: pd.DatetimeIndex,
+    excluded_dates: set[str],
+    timezone_name: str,
+) -> pd.DatetimeIndex:
+    local_zone = ZoneInfo(timezone_name)
+    keep_mask = [
+        timestamp.tz_convert(local_zone).date().isoformat() not in excluded_dates
+        for timestamp in timestamps
+    ]
+    return timestamps[keep_mask]
+
+
 def _build_markdown_report(report: EquityIntradayAuditReport) -> str:
     verdict = "APTO" if report.apt_for_or_fvg_backtest else "NO APTO"
     warnings = (
@@ -198,6 +279,7 @@ def _build_markdown_report(report: EquityIntradayAuditReport) -> str:
             f"- Sesiones: {report.sessions}",
             f"- Sesiones completas: {report.sessions_complete}",
             f"- Sesiones incompletas: {report.sessions_incomplete}",
+            f"- Sesiones excluidas por calidad: {report.total_excluded_sessions}",
             f"- Barras esperadas RTH: {report.expected_bars}",
             f"- Barras observadas RTH: {report.observed_rth_bars}",
             f"- Barras faltantes: {report.missing_bars}",
@@ -232,12 +314,20 @@ def audit_equity_intraday_csv(
     asset_class: str = "equity",
     source_timezone: str | None = None,
     calendar: EquitySessionCalendar | None = None,
+    excluded_sessions: str | Path | QualityOverrides | None = None,
+    expected_start: str | None = None,
+    expected_end: str | None = None,
 ) -> EquityIntradayAuditReport:
     if asset_class != "equity":
         raise ValueError("audit_equity_intraday_csv only supports asset_class='equity'")
 
     source = Path(path)
     equity_calendar = calendar or EquitySessionCalendar.us_equity()
+    overrides = (
+        excluded_sessions
+        if isinstance(excluded_sessions, QualityOverrides)
+        else load_quality_overrides(excluded_sessions)
+    )
     if not source.exists():
         return EquityIntradayAuditReport(
             symbol=symbol.upper(),
@@ -273,6 +363,8 @@ def audit_equity_intraday_csv(
             sessions_with_too_few_bars=0,
             sessions_with_unexpected_bar_count=0,
             discarded_days=0,
+            total_excluded_sessions=0,
+            rows_after_excluded_sessions=0,
             critical_warnings=["CSV_NOT_FOUND"],
             calendar_name=equity_calendar.name,
             calendar_source=equity_calendar.source,
@@ -293,6 +385,7 @@ def audit_equity_intraday_csv(
             sha256="",
             file_bytes=0,
             session_details=[],
+            excluded_sessions=[],
         )
     raw = pd.read_csv(source)
     timestamp_column = _timestamp_column(raw)
@@ -300,9 +393,6 @@ def audit_equity_intraday_csv(
         raw[timestamp_column],
         source_timezone=source_timezone,
     )
-    chronological_order_valid = bool(parsed_timestamps.is_monotonic_increasing)
-    duplicate_timestamps = int(parsed_timestamps.duplicated().sum())
-
     normalized = _rename_columns(raw).loc[:, CANONICAL_COLUMNS].copy()
     normalized["timestamp"] = parsed_timestamps
     for column in CANONICAL_COLUMNS[1:]:
@@ -315,10 +405,82 @@ def audit_equity_intraday_csv(
     unique = unique.reset_index(drop=True)
 
     duration = pd.Timedelta(timeframe)
-    local_times = unique["timestamp"].dt.tz_convert(ZoneInfo(equity_calendar.timezone))
-    first_session_date = local_times.dt.date.min() if not unique.empty else None
-    last_session_date = local_times.dt.date.max() if not unique.empty else None
-    expected_index = (
+    local_times_all = unique["timestamp"].dt.tz_convert(
+        ZoneInfo(equity_calendar.timezone)
+    )
+    observed_source_dates = (
+        _iso_session_dates_from_local_times(local_times_all)
+        if not unique.empty
+        else set()
+    )
+    expected_range_dates: set[str] = set()
+    if expected_start is not None and expected_end is not None:
+        expected_range_dates = {
+            item.date().isoformat()
+            for item in pd.date_range(
+                pd.Timestamp(expected_start).date(),
+                pd.Timestamp(expected_end).date(),
+                freq="D",
+            )
+        }
+    matching_exclusions = overrides.matching_sessions(
+        symbol=symbol,
+        dates=observed_source_dates.union(expected_range_dates),
+    )
+    excluded_dates = {session.date for session in matching_exclusions}
+    if excluded_dates:
+        local_date_strings_all = _session_date_strings_from_local_times(local_times_all)
+        exclusion_mask = local_date_strings_all.isin(excluded_dates)
+        raw_local_times = parsed_timestamps.dt.tz_convert(
+            ZoneInfo(equity_calendar.timezone)
+        )
+        raw_local_dates = _session_date_strings_from_local_times(raw_local_times)
+        analysis_source_timestamps = parsed_timestamps.loc[
+            ~raw_local_dates.isin(excluded_dates)
+        ]
+        analysis_normalized = normalized.copy()
+        analysis_local_dates = analysis_normalized["timestamp"].dt.tz_convert(
+            ZoneInfo(equity_calendar.timezone)
+        )
+        analysis_local_date_strings = _session_date_strings_from_local_times(
+            analysis_local_dates
+        )
+        analysis_normalized = analysis_normalized.loc[
+            ~analysis_local_date_strings.isin(excluded_dates)
+        ].copy()
+    else:
+        exclusion_mask = pd.Series(False, index=unique.index)
+        analysis_source_timestamps = parsed_timestamps
+        analysis_normalized = normalized
+    chronological_order_valid = bool(analysis_source_timestamps.is_monotonic_increasing)
+    duplicate_timestamps = int(analysis_source_timestamps.duplicated().sum())
+    analysis_unique = unique.loc[~exclusion_mask].copy().reset_index(drop=True)
+    local_times = local_times_all
+    observed_first_session_date = (
+        local_times.iloc[0].date() if not unique.empty else None
+    )
+    observed_last_session_date = (
+        local_times.iloc[-1].date() if not unique.empty else None
+    )
+    configured_first_session_date = (
+        pd.Timestamp(expected_start).date() if expected_start is not None else None
+    )
+    configured_last_session_date = (
+        pd.Timestamp(expected_end).date() if expected_end is not None else None
+    )
+    first_candidates = [
+        candidate
+        for candidate in (observed_first_session_date, configured_first_session_date)
+        if candidate is not None
+    ]
+    last_candidates = [
+        candidate
+        for candidate in (observed_last_session_date, configured_last_session_date)
+        if candidate is not None
+    ]
+    first_session_date = min(first_candidates) if first_candidates else None
+    last_session_date = max(last_candidates) if last_candidates else None
+    expected_index_all = (
         equity_calendar.expected_timestamps(
             first_session_date,
             last_session_date,
@@ -327,11 +489,19 @@ def audit_equity_intraday_csv(
         if first_session_date is not None and last_session_date is not None
         else pd.DatetimeIndex([], tz="UTC")
     )
+    if excluded_dates and len(expected_index_all):
+        expected_index = _filter_utc_index_excluding_local_dates(
+            expected_index_all,
+            excluded_dates,
+            equity_calendar.timezone,
+        )
+    else:
+        expected_index = expected_index_all
     expected_set = set(expected_index)
-    observed_set = set(unique["timestamp"])
+    observed_set = set(analysis_unique["timestamp"])
     missing = sorted(expected_set.difference(observed_set))
 
-    outside_labels = unique["timestamp"].map(
+    outside_labels = analysis_unique["timestamp"].map(
         lambda ts: _classify_outside_rth(ts, equity_calendar)
     )
     inside_mask = outside_labels == "inside"
@@ -340,18 +510,18 @@ def audit_equity_intraday_csv(
     holiday_or_closed = int((outside_labels == "holiday_or_closed").sum())
     outside_rth_bars = premarket_bars + after_hours_bars + holiday_or_closed
     off_schedule_rth = int(
-        (inside_mask & ~unique["timestamp"].isin(expected_set)).sum()
+        (inside_mask & ~analysis_unique["timestamp"].isin(expected_set)).sum()
     )
 
-    local_session_dates = unique["timestamp"].dt.tz_convert(
+    local_session_dates = analysis_unique["timestamp"].dt.tz_convert(
         ZoneInfo(equity_calendar.timezone)
-    ).dt.date
+    ).dt.normalize()
     same_session = local_session_dates.eq(local_session_dates.shift(1))
-    inside_series = pd.Series(inside_mask.to_numpy(), index=unique.index)
+    inside_series = pd.Series(inside_mask.to_numpy(), index=analysis_unique.index)
     consecutive_inside_same_session = (
         inside_series & inside_series.shift(1, fill_value=False) & same_session
     )
-    diffs = unique["timestamp"].diff()
+    diffs = analysis_unique["timestamp"].diff()
     anomalous_gaps = diffs[consecutive_inside_same_session & (diffs > duration)]
     max_gap_minutes = (
         float(anomalous_gaps.max() / pd.Timedelta(minutes=1))
@@ -360,35 +530,89 @@ def audit_equity_intraday_csv(
     )
 
     invalid_ohlc = (
-        (normalized["high"] < normalized[["open", "close", "low"]].max(axis=1))
-        | (normalized["low"] > normalized[["open", "close", "high"]].min(axis=1))
+        (
+            analysis_normalized["high"]
+            < analysis_normalized[["open", "close", "low"]].max(axis=1)
+        )
+        | (
+            analysis_normalized["low"]
+            > analysis_normalized[["open", "close", "high"]].min(axis=1)
+        )
     )
-    prices = normalized[["open", "high", "low", "close"]]
+    prices = analysis_normalized[["open", "high", "low", "close"]]
     nonpositive_price = (prices <= 0).any(axis=1)
-    nonpositive_volume = normalized["volume"] <= 0
+    nonpositive_volume = analysis_normalized["volume"] <= 0
+
+    excluded_audits: list[ExcludedSessionAudit] = []
+    for session in matching_exclusions:
+        expected_count = int(
+            sum(
+                ts.tz_convert(ZoneInfo(equity_calendar.timezone)).date().isoformat()
+                == session.date
+                for ts in expected_index_all
+            )
+        )
+        bars_removed = int(exclusion_mask.sum()) if session.date in excluded_dates else 0
+        if len(excluded_dates) > 1:
+            bars_removed = int((local_date_strings_all == session.date).sum())
+        excluded_audits.append(
+            ExcludedSessionAudit(
+                symbol=session.symbol,
+                date=session.date,
+                reason=session.reason,
+                missing_timestamps=list(session.missing_timestamps),
+                source=session.source,
+                policy=session.policy,
+                created_by=session.created_by,
+                expected_bars=expected_count,
+                bars_removed=bars_removed,
+            )
+        )
 
     session_details: list[SessionAudit] = []
     if first_session_date is not None and last_session_date is not None:
-        expected_by_session = pd.Series(expected_index).dt.tz_convert(
+        expected_dates = _session_counts_from_utc_index(
+            expected_index,
+            equity_calendar.timezone,
+        )
+        observed_inside = analysis_unique.loc[inside_mask].copy()
+        observed_inside_local_times = observed_inside["timestamp"].dt.tz_convert(
             ZoneInfo(equity_calendar.timezone)
         )
-        expected_dates = (
-            expected_by_session.dt.date.value_counts().to_dict()
-            if len(expected_by_session)
+        observed_inside["_session_date"] = _session_dates_from_local_times(
+            observed_inside_local_times
+        )
+        outside = analysis_unique.loc[~inside_mask].copy()
+        outside_local_times = outside["timestamp"].dt.tz_convert(
+            ZoneInfo(equity_calendar.timezone)
+        )
+        outside["_session_date"] = _session_dates_from_local_times(
+            outside_local_times
+        )
+        duplicate_dates = analysis_source_timestamps[
+            analysis_source_timestamps.duplicated()
+        ]
+        duplicate_local_times = duplicate_dates.dt.tz_convert(
+            ZoneInfo(equity_calendar.timezone)
+        )
+        duplicate_dates = _session_dates_from_local_times(duplicate_local_times)
+        observed_counts = observed_inside["_session_date"].value_counts().to_dict()
+        extra_off_schedule_mask = ~observed_inside["timestamp"].isin(expected_set)
+        extra_counts = (
+            observed_inside.loc[extra_off_schedule_mask, "_session_date"]
+            .value_counts()
+            .to_dict()
+        )
+        outside_counts = outside["_session_date"].value_counts().to_dict()
+        duplicate_counts = duplicate_dates.value_counts().to_dict()
+        missing_counts = (
+            _session_counts_from_utc_index(
+                pd.DatetimeIndex(missing),
+                equity_calendar.timezone,
+            )
+            if missing
             else {}
         )
-        observed_inside = unique.loc[inside_mask].copy()
-        observed_inside["_session_date"] = observed_inside["timestamp"].dt.tz_convert(
-            ZoneInfo(equity_calendar.timezone)
-        ).dt.date
-        outside = unique.loc[~inside_mask].copy()
-        outside["_session_date"] = outside["timestamp"].dt.tz_convert(
-            ZoneInfo(equity_calendar.timezone)
-        ).dt.date
-        duplicate_dates = parsed_timestamps[parsed_timestamps.duplicated()]
-        duplicate_dates = duplicate_dates.dt.tz_convert(
-            ZoneInfo(equity_calendar.timezone)
-        ).dt.date
 
         for day in pd.date_range(first_session_date, last_session_date, freq="D"):
             session_date = day.date()
@@ -396,24 +620,11 @@ def audit_equity_intraday_csv(
             expected_count = int(expected_dates.get(session_date, 0))
             if expected_count == 0:
                 continue
-            observed_count = int(
-                (observed_inside["_session_date"] == session_date).sum()
-            )
-            missing_count = int(
-                sum(
-                    ts.tz_convert(ZoneInfo(equity_calendar.timezone)).date()
-                    == session_date
-                    for ts in missing
-                )
-            )
-            extra_count = int(
-                (
-                    (observed_inside["_session_date"] == session_date)
-                    & ~observed_inside["timestamp"].isin(expected_set)
-                ).sum()
-            )
-            outside_count = int((outside["_session_date"] == session_date).sum())
-            duplicate_count = int((duplicate_dates == session_date).sum())
+            observed_count = int(observed_counts.get(session_date, 0))
+            missing_count = int(missing_counts.get(session_date, 0))
+            extra_count = int(extra_counts.get(session_date, 0))
+            outside_count = int(outside_counts.get(session_date, 0))
+            duplicate_count = int(duplicate_counts.get(session_date, 0))
             complete = (
                 observed_count == expected_count
                 and missing_count == 0
@@ -520,7 +731,7 @@ def audit_equity_intraday_csv(
         and int(nonpositive_volume.sum()) == 0
         and sessions_incomplete == 0
         and sessions_too_few == 0
-        and len(session_details) > 0
+        and (len(session_details) > 0 or len(excluded_audits) > 0)
         and equity_calendar.loaded
         and calendar_range_supported
     )
@@ -563,6 +774,8 @@ def audit_equity_intraday_csv(
         sessions_with_too_few_bars=sessions_too_few,
         sessions_with_unexpected_bar_count=sessions_unexpected,
         discarded_days=discarded_days,
+        total_excluded_sessions=len(excluded_audits),
+        rows_after_excluded_sessions=len(analysis_unique),
         critical_warnings=critical_warnings,
         calendar_name=equity_calendar.name,
         calendar_source=equity_calendar.source,
@@ -583,6 +796,7 @@ def audit_equity_intraday_csv(
         sha256=_sha256_file(source),
         file_bytes=source.stat().st_size,
         session_details=session_details,
+        excluded_sessions=excluded_audits,
     )
 
 
@@ -596,6 +810,7 @@ def write_equity_intraday_audit_report(
     json_path = destination / f"{stem}.json"
     csv_path = destination / f"{stem}.csv"
     sessions_path = destination / f"{stem}_sessions.csv"
+    exclusions_path = destination / f"{stem}_excluded_sessions.csv"
     md_path = destination / f"{stem}.md"
 
     json_path.write_text(
@@ -607,10 +822,15 @@ def write_equity_intraday_audit_report(
         sessions_path,
         index=False,
     )
+    pd.DataFrame([session.to_record() for session in report.excluded_sessions]).to_csv(
+        exclusions_path,
+        index=False,
+    )
     md_path.write_text(_build_markdown_report(report), encoding="utf-8")
     return {
         "json": json_path,
         "csv": csv_path,
         "sessions_csv": sessions_path,
+        "excluded_sessions_csv": exclusions_path,
         "markdown": md_path,
     }

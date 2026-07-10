@@ -1,0 +1,33 @@
+{
+  "adjustment": "raw",
+  "asset_class": "equity",
+  "audit_apt_for_or_fvg_backtest": true,
+  "audit_critical_warnings": [],
+  "audit_warnings": [],
+  "calendar_early_closes_loaded": 118,
+  "calendar_holidays_loaded": 438,
+  "calendar_loaded": true,
+  "calendar_source": "builtin_us_equity_calendar_v1",
+  "created_at": "2026-07-08T04:09:54.326971+00:00",
+  "dataset_status": "approved_for_or_fvg_backtest",
+  "end": "2026-07-06",
+  "excluded_sessions": [],
+  "feed": "sip",
+  "first_timestamp": "2026-01-02 09:30:00-05:00",
+  "input_file": "data\\raw\\QQQ_1min_2026-01-01_2026-07-06_alpaca_sip_raw_rth.csv",
+  "last_timestamp": "2026-07-06 15:59:00-04:00",
+  "project_safety_state": {
+    "broker_connected": false,
+    "live_trading": false,
+    "orders_sent": false
+  },
+  "provider": "alpaca",
+  "rows": 48960,
+  "rth_only": true,
+  "sha256": "76237cb59a99e2848159f83539d32ec01de01ce48168333aca03e5397747848b",
+  "source_timezone": "America/New_York",
+  "start": "2026-01-01",
+  "symbol": "QQQ",
+  "timeframe": "1min",
+  "total_excluded_sessions": 0
+}

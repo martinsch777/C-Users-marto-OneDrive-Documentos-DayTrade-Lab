@@ -12,6 +12,7 @@ from src.data import (
     audit_equity_intraday_csv,
     write_equity_intraday_audit_report,
 )
+from src.data.quality_overrides import QualityOverrides
 
 
 def minute_frame(local_start: str, local_end: str, *, tz="America/New_York"):
@@ -30,6 +31,41 @@ def minute_frame(local_start: str, local_end: str, *, tz="America/New_York"):
 
 def audit_calendar():
     return EquitySessionCalendar.from_config()
+
+
+def spy_2023_06_05_missing_four_bars():
+    frame = minute_frame("2023-06-05 09:30", "2023-06-05 15:59")
+    missing = {
+        "2023-06-05 09:52:00-04:00",
+        "2023-06-05 09:53:00-04:00",
+        "2023-06-05 09:54:00-04:00",
+        "2023-06-05 09:55:00-04:00",
+    }
+    return frame.loc[~frame["timestamp"].isin(missing)].reset_index(drop=True)
+
+
+def spy_2023_06_05_override():
+    return QualityOverrides.from_record(
+        {
+            "version": 1,
+            "excluded_sessions": [
+                {
+                    "symbol": "SPY",
+                    "date": "2023-06-05",
+                    "reason": "MISSING_RTH_BARS_FROM_PROVIDER",
+                    "missing_timestamps": [
+                        "2023-06-05 09:52:00-04:00",
+                        "2023-06-05 09:53:00-04:00",
+                        "2023-06-05 09:54:00-04:00",
+                        "2023-06-05 09:55:00-04:00",
+                    ],
+                    "source": "alpaca_sip_raw_rth",
+                    "policy": "exclude_entire_session",
+                    "created_by": "data_quality_audit",
+                }
+            ],
+        }
+    )
 
 
 class EquityDataAuditTests(unittest.TestCase):
@@ -109,6 +145,57 @@ class EquityDataAuditTests(unittest.TestCase):
         self.assertIn("PREMARKET_BARS_PRESENT", report.critical_warnings)
         self.assertIn("AFTER_HOURS_BARS_PRESENT", report.critical_warnings)
 
+    def test_spy_2023_06_05_missing_provider_bars_fails_without_exclusion(self):
+        path = self.write_csv(spy_2023_06_05_missing_four_bars())
+
+        report = audit_equity_intraday_csv(
+            path,
+            "SPY",
+            "1min",
+            calendar=audit_calendar(),
+        )
+
+        self.assertFalse(report.apt_for_or_fvg_backtest)
+        self.assertEqual(report.rows_total, 386)
+        self.assertEqual(report.missing_bars, 4)
+        self.assertEqual(report.total_excluded_sessions, 0)
+        self.assertIn("MISSING_RTH_BARS", report.critical_warnings)
+
+    def test_spy_2023_06_05_missing_provider_bars_passes_with_exact_exclusion(self):
+        path = self.write_csv(spy_2023_06_05_missing_four_bars())
+
+        report = audit_equity_intraday_csv(
+            path,
+            "SPY",
+            "1min",
+            calendar=audit_calendar(),
+            excluded_sessions=spy_2023_06_05_override(),
+        )
+
+        self.assertTrue(report.apt_for_or_fvg_backtest)
+        self.assertEqual(report.rows_total, 386)
+        self.assertEqual(report.rows_after_excluded_sessions, 0)
+        self.assertEqual(report.missing_bars, 0)
+        self.assertEqual(report.total_excluded_sessions, 1)
+        self.assertEqual(report.excluded_sessions[0].date, "2023-06-05")
+        self.assertEqual(report.excluded_sessions[0].bars_removed, 386)
+        self.assertNotIn("MISSING_RTH_BARS", report.critical_warnings)
+
+    def test_excluded_session_does_not_apply_to_other_symbol(self):
+        path = self.write_csv(spy_2023_06_05_missing_four_bars())
+
+        report = audit_equity_intraday_csv(
+            path,
+            "QQQ",
+            "1min",
+            calendar=audit_calendar(),
+            excluded_sessions=spy_2023_06_05_override(),
+        )
+
+        self.assertFalse(report.apt_for_or_fvg_backtest)
+        self.assertEqual(report.missing_bars, 4)
+        self.assertEqual(report.total_excluded_sessions, 0)
+
     def test_early_close_uses_calendar_expected_bar_count(self):
         path = self.write_csv(minute_frame("2025-07-03 09:30", "2025-07-03 12:59"))
         report = audit_equity_intraday_csv(
@@ -177,6 +264,39 @@ class EquityDataAuditTests(unittest.TestCase):
         self.assertEqual(report.anomalous_time_gaps, 0)
         self.assertEqual(report.first_timestamp_utc, "2026-03-06T14:30:00+00:00")
         self.assertIn("2026-03-09T19:59:00+00:00", report.last_timestamp_utc)
+
+    def test_multi_session_audit_avoids_dt_date_unique_memory_pattern(self):
+        calendar = audit_calendar()
+        expected = calendar.expected_timestamps(
+            pd.Timestamp("2024-01-02").date(),
+            pd.Timestamp("2024-01-31").date(),
+            "1min",
+        )
+        local = expected.tz_convert("America/New_York")
+        frame = pd.DataFrame(
+            {
+                "timestamp": local.astype(str),
+                "open": [100.0] * len(local),
+                "high": [101.0] * len(local),
+                "low": [99.0] * len(local),
+                "close": [100.5] * len(local),
+                "volume": [1000.0] * len(local),
+            }
+        )
+        path = self.write_csv(frame)
+
+        report = audit_equity_intraday_csv(
+            path,
+            "QQQ",
+            "1min",
+            calendar=calendar,
+        )
+
+        self.assertTrue(report.apt_for_or_fvg_backtest)
+        self.assertEqual(report.rows_total, len(local))
+        self.assertEqual(report.missing_bars, 0)
+        source = Path("src/data/equity_audit.py").read_text(encoding="utf-8")
+        self.assertNotIn(".dt.date.unique()", source)
 
     def test_manual_empty_calendar_fails_clearly(self):
         path = self.write_csv(minute_frame("2025-07-02 09:30", "2025-07-02 15:59"))

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "excluded_sessions": [
+    {
+      "symbol": "SPY",
+      "date": "2023-06-05",
+      "reason": "MISSING_RTH_BARS_FROM_PROVIDER",
+      "missing_timestamps": [
+        "2023-06-05 09:52:00-04:00",
+        "2023-06-05 09:53:00-04:00",
+        "2023-06-05 09:54:00-04:00",
+        "2023-06-05 09:55:00-04:00"
+      ],
+      "source": "alpaca_sip_raw_rth",
+      "policy": "exclude_entire_session",
+      "created_by": "data_quality_audit"
+    }
+  ]
+}

@@ -12,6 +12,7 @@ from src.data.dataset_manifest import (
     APPROVED_FOR_OR_FVG_BACKTEST,
     FAILED_AUDIT,
     build_dataset_manifest,
+    curated_manifest_filename,
     sha256_file,
     write_dataset_manifest,
 )
@@ -100,8 +101,30 @@ class DatasetManifestTests(unittest.TestCase):
         self.assertGreater(manifest.calendar_holidays_loaded, 0)
         self.assertGreater(manifest.calendar_early_closes_loaded, 0)
         self.assertFalse(manifest.project_safety_state["live_trading"])
+        self.assertFalse(manifest.project_safety_state["live_trading_enabled"])
         self.assertFalse(manifest.project_safety_state["broker_connected"])
         self.assertFalse(manifest.project_safety_state["orders_sent"])
+        self.assertFalse(manifest.project_safety_state["paper_broker_enabled"])
+        self.assertFalse(manifest.broker_connected)
+        self.assertFalse(manifest.orders_sent)
+        self.assertFalse(manifest.live_trading_enabled)
+        self.assertFalse(manifest.paper_broker_enabled)
+
+    def test_new_manifest_record_includes_explicit_offline_safety_false_fields(self):
+        path = write_csv(minute_frame("2024-07-01 09:30", "2024-07-01 15:59"))
+        audit = audit_equity_intraday_csv(path, "QQQ", "1min")
+
+        manifest = build_dataset_manifest(
+            result_for(path),
+            audit_report=audit,
+            source_timezone="America/New_York",
+        )
+
+        payload = manifest.to_record()
+        self.assertIs(payload["broker_connected"], False)
+        self.assertIs(payload["orders_sent"], False)
+        self.assertIs(payload["live_trading_enabled"], False)
+        self.assertIs(payload["paper_broker_enabled"], False)
 
     def test_manifest_failed_audit_when_audit_fails(self):
         frame = minute_frame("2024-07-01 09:30", "2024-07-01 15:59")
@@ -139,12 +162,28 @@ class DatasetManifestTests(unittest.TestCase):
         self.assertEqual(payload["dataset_status"], APPROVED_FOR_OR_FVG_BACKTEST)
         self.assertEqual(payload["sha256"], sha256_file(path))
 
+    def test_curated_manifest_filename_is_clear(self):
+        self.assertEqual(
+            curated_manifest_filename(
+                symbol="SPY",
+                timeframe="1min",
+                start="2022-01-01",
+                end="2026-07-06",
+            ),
+            "SPY_1min_2022-01-01_2026-07-06_curated_manifest.json",
+        )
+
     def test_manifest_layer_does_not_import_backtests_brokers_or_orders(self):
         source = Path("src/data/dataset_manifest.py").read_text(encoding="utf-8")
         sanitized = (
             source.lower()
             .replace('"broker_connected"', "")
             .replace('"orders_sent"', "")
+            .replace('"live_trading_enabled"', "")
+            .replace('"paper_broker_enabled"', "")
+            .replace("broker_connected", "")
+            .replace("paper_broker_enabled", "")
+            .replace("orders_sent", "")
         )
 
         self.assertNotIn("src.backtesting", source)

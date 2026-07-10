@@ -1,0 +1,37 @@
+{
+  "adjustment": "raw",
+  "asset_class": "equity",
+  "audit_apt_for_or_fvg_backtest": false,
+  "audit_critical_warnings": [
+    "MISSING_RTH_BARS",
+    "ANOMALOUS_TIME_GAPS",
+    "UNEXPECTED_SESSION_BAR_COUNT"
+  ],
+  "audit_warnings": [],
+  "calendar_early_closes_loaded": 118,
+  "calendar_holidays_loaded": 438,
+  "calendar_loaded": true,
+  "calendar_source": "builtin_us_equity_calendar_v1",
+  "created_at": "2026-07-08T04:00:11.578055+00:00",
+  "dataset_status": "failed_audit",
+  "end": "2023-12-31",
+  "excluded_sessions": [],
+  "feed": "sip",
+  "first_timestamp": "2023-01-03 09:30:00-05:00",
+  "input_file": "data\\raw\\SPY_1min_2023-01-01_2023-12-31_alpaca_sip_raw_rth.csv",
+  "last_timestamp": "2023-12-29 15:59:00-05:00",
+  "project_safety_state": {
+    "broker_connected": false,
+    "live_trading": false,
+    "orders_sent": false
+  },
+  "provider": "alpaca",
+  "rows": 97136,
+  "rth_only": true,
+  "sha256": "1a3e8b39d32b2272608a7c4b7f71fe614b5de03e68525cdb917c0a9eb086e755",
+  "source_timezone": "America/New_York",
+  "start": "2023-01-01",
+  "symbol": "SPY",
+  "timeframe": "1min",
+  "total_excluded_sessions": 0
+}

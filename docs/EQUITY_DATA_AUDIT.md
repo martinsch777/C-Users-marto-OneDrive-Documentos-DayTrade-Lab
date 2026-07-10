@@ -30,7 +30,149 @@ Archivos generados:
 - `<SYMBOL>_1min_data_audit.json`: reporte completo.
 - `<SYMBOL>_1min_data_audit.csv`: resumen plano.
 - `<SYMBOL>_1min_data_audit_sessions.csv`: detalle por sesion.
+- `<SYMBOL>_1min_data_audit_excluded_sessions.csv`: sesiones excluidas por override.
 - `<SYMBOL>_1min_data_audit.md`: resumen legible.
+
+## Sesiones excluidas por calidad de proveedor
+
+Si un proveedor entrega una sesion RTH incompleta y la redescarga reproduce el
+mismo faltante, no se deben rellenar barras:
+
+- no interpolar;
+- no forward-fill;
+- no inventar volumen;
+- no mezclar IEX para completar un dataset SIP;
+- no corregir a mano precios/volumen.
+
+La politica permitida es excluir la sesion completa de forma auditable con:
+
+```powershell
+python -m src.cli audit-data `
+  --csv "data\raw\SPY_1min.csv" `
+  --symbol SPY `
+  --timeframe 1min `
+  --asset-class equity `
+  --source-timezone America/New_York `
+  --excluded-sessions "data\quality_overrides\excluded_sessions.json"
+```
+
+El archivo versionado vive en:
+
+```text
+data\quality_overrides\excluded_sessions.json
+```
+
+Caso actualmente documentado:
+
+- `SPY`
+- `2023-06-05`
+- `source=alpaca_sip_raw_rth`
+- `reason=MISSING_RTH_BARS_FROM_PROVIDER`
+- faltantes confirmados:
+  - `2023-06-05 09:52:00-04:00`
+  - `2023-06-05 09:53:00-04:00`
+  - `2023-06-05 09:54:00-04:00`
+  - `2023-06-05 09:55:00-04:00`
+- `policy=exclude_entire_session`
+
+La exclusion solo aplica si coinciden exactamente `symbol` y `date`. Una sesion
+excluida no cuenta como missing RTH bars, pero queda visible como
+`excluded_sessions` y `total_excluded_sessions` en el reporte y en el manifest.
+
+## Construir dataset curado
+
+Para escribir un CSV curado sin sesiones excluidas:
+
+```powershell
+python -m src.cli build-equity-dataset `
+  --csv "data\raw\SPY_1min.csv" `
+  --symbol SPY `
+  --timeframe 1min `
+  --asset-class equity `
+  --source-timezone America/New_York `
+  --start 2023-01-01 `
+  --end 2023-12-31 `
+  --provider alpaca `
+  --feed sip `
+  --adjustment raw `
+  --rth-only `
+  --excluded-sessions "data\quality_overrides\excluded_sessions.json" `
+  --output-dir "data\curated" `
+  --manifest-dir "data\manifests" `
+  --range-filenames `
+  --verbose
+```
+
+Con `--range-filenames`, el archivo queda nombrado con rango, por ejemplo:
+
+```text
+data\curated\SPY_1min_2023-01-01_2023-12-31_curated.csv
+```
+
+Por seguridad, el build no pisa archivos existentes. Si el destino existe,
+devuelve:
+
+```text
+OUTPUT_FILE_ALREADY_EXISTS
+```
+
+Para regenerar de forma intencional:
+
+```powershell
+--overwrite
+```
+
+El build escribe tambien un sidecar `.build.json` y un manifest aprobado/fallido
+segun el resultado de auditoria del dataset curado.
+
+### Diagnostico de performance del build
+
+Para datasets grandes, agregar `--verbose` imprime etapas con timestamps en
+`stderr` sin romper el JSON principal de salida:
+
+```text
+START
+validating output paths
+reading CSV
+rows loaded
+parsing timestamps
+filtering start/end
+applying RTH filter
+applying excluded sessions
+writing curated CSV
+running audit
+calculating sha256
+writing manifest
+DONE
+```
+
+Para aislar si la lentitud viene de la auditoria:
+
+```powershell
+--skip-audit
+```
+
+Con `--skip-audit`, el manifest queda con:
+
+```text
+dataset_status=not_audited
+```
+
+Nunca queda aprobado para OR/FVG. Es solo diagnostico.
+
+Para probar escritura del CSV curado sin generar manifest:
+
+```powershell
+--skip-manifest
+```
+
+El CSV curado se escribe de forma atomica: primero `.tmp` y luego rename al
+destino final. Si el output existe y no se pasa `--overwrite`, falla antes de
+leer el CSV de entrada con:
+
+```text
+OUTPUT_FILE_ALREADY_EXISTS
+```
 
 ## Validaciones
 
@@ -92,6 +234,7 @@ Convencion de barras: `timestamp` representa la apertura de la vela.
   "missing_bars": 0,
   "duplicate_timestamps": 0,
   "outside_rth_bars": 0,
+  "total_excluded_sessions": 0,
   "critical_warnings": [],
   "calendar_name": "US_EQUITY_RTH",
   "calendar_source": "builtin_us_equity_calendar_v1",

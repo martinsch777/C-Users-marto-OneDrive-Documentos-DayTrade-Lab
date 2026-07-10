@@ -14,6 +14,7 @@ from src.data.alpaca_equity_downloader import (
     AlpacaEquityIntradayDownloader,
     DownloadRequest,
     classify_alpaca_http_error,
+    download_output_filename,
     normalize_alpaca_bars,
 )
 
@@ -49,6 +50,7 @@ class AlpacaEquityDownloaderTests(unittest.TestCase):
                     symbol="QQQ",
                     start="2024-01-01",
                     end="2024-01-02",
+                    output_dir=Path(tempfile.mkdtemp()),
                 )
             )
 
@@ -63,6 +65,7 @@ class AlpacaEquityDownloaderTests(unittest.TestCase):
                     symbol="QQQ",
                     start="2024-01-01",
                     end="2024-01-02",
+                    output_dir=Path(tempfile.mkdtemp()),
                 )
             )
 
@@ -108,6 +111,24 @@ class AlpacaEquityDownloaderTests(unittest.TestCase):
         self.assertIn("DRY_RUN output_file=", result.stdout)
         self.assertIn("Safety state", result.stdout)
         self.assertFalse((output / "QQQ_1min.csv").exists())
+
+    def test_download_cli_help_shows_range_and_overwrite_flags(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "src.cli",
+                "download-equity-intraday",
+                "--help",
+            ],
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--range-filenames", result.stdout)
+        self.assertIn("--overwrite", result.stdout)
 
     def test_url_and_headers_are_market_data_only_and_secret_not_logged(self):
         captured = {}
@@ -178,6 +199,126 @@ class AlpacaEquityDownloaderTests(unittest.TestCase):
         self.assertEqual(result.rows, 2)
         self.assertTrue(Path(result.output_file).exists())
         self.assertTrue(result.sha256)
+
+    def test_range_filename_correct_for_downloader(self):
+        request = DownloadRequest(
+            symbol="QQQ",
+            start="2022-01-01",
+            end="2026-07-06",
+            feed="sip",
+            adjustment="raw",
+            rth_only=True,
+            range_filenames=True,
+        )
+
+        self.assertEqual(
+            download_output_filename(request),
+            "QQQ_1min_2022-01-01_2026-07-06_alpaca_sip_raw_rth.csv",
+        )
+
+    def test_legacy_filename_is_preserved_without_range_filenames(self):
+        request = DownloadRequest(
+            symbol="SPY",
+            start="2022-01-01",
+            end="2026-07-06",
+            feed="sip",
+            adjustment="raw",
+            rth_only=True,
+        )
+
+        self.assertEqual(download_output_filename(request), "SPY_1min.csv")
+
+    def test_existing_output_without_overwrite_fails_before_network(self):
+        calls = {"count": 0}
+
+        def fake_request(_url, _headers):
+            calls["count"] += 1
+            return {"bars": [alpaca_bar("2024-07-01T13:30:00Z")]}
+
+        output = Path(tempfile.mkdtemp())
+        existing = output / "QQQ_1min.csv"
+        existing.write_text("existing", encoding="utf-8")
+
+        with self.assertRaises(AlpacaDownloadError) as context:
+            AlpacaEquityIntradayDownloader(
+                api_key_id="key",
+                api_secret_key="secret",
+                request_json=fake_request,
+            ).download(
+                DownloadRequest(
+                    symbol="QQQ",
+                    start="2024-07-01",
+                    end="2024-07-01",
+                    output_dir=output,
+                )
+            )
+
+        self.assertEqual(context.exception.code, "OUTPUT_FILE_ALREADY_EXISTS")
+        self.assertEqual(calls["count"], 0)
+
+    def test_existing_output_with_overwrite_allows_regeneration(self):
+        output = Path(tempfile.mkdtemp())
+        existing = output / "QQQ_1min.csv"
+        existing.write_text("existing", encoding="utf-8")
+
+        result = AlpacaEquityIntradayDownloader(
+            api_key_id="key",
+            api_secret_key="secret",
+            request_json=lambda _url, _headers: {
+                "bars": [alpaca_bar("2024-07-01T13:30:00Z")],
+                "next_page_token": None,
+            },
+        ).download(
+            DownloadRequest(
+                symbol="QQQ",
+                start="2024-07-01",
+                end="2024-07-01",
+                output_dir=output,
+                overwrite=True,
+            )
+        )
+
+        self.assertEqual(result.output_file, str(existing))
+        self.assertIn("timestamp,open,high,low,close,volume", existing.read_text(encoding="utf-8"))
+        self.assertEqual(result.rows, 1)
+
+    def test_manifest_input_file_uses_actual_range_output_file(self):
+        from src.data import audit_equity_intraday_csv
+        from src.data.dataset_manifest import build_dataset_manifest
+
+        output = Path(tempfile.mkdtemp())
+        result = AlpacaEquityIntradayDownloader(
+            api_key_id="key",
+            api_secret_key="secret",
+            request_json=lambda _url, _headers: {
+                "bars": local_rth_bars("2024-07-01"),
+                "next_page_token": None,
+            },
+        ).download(
+            DownloadRequest(
+                symbol="QQQ",
+                start="2024-07-01",
+                end="2024-07-01",
+                feed="sip",
+                adjustment="raw",
+                output_dir=output,
+                rth_only=True,
+                range_filenames=True,
+            )
+        )
+        audit = audit_equity_intraday_csv(result.output_file, "QQQ", "1min")
+
+        manifest = build_dataset_manifest(
+            result,
+            audit_report=audit,
+            source_timezone="America/New_York",
+        )
+
+        self.assertEqual(
+            Path(manifest.input_file).name,
+            "QQQ_1min_2024-07-01_2024-07-01_alpaca_sip_raw_rth.csv",
+        )
+        self.assertEqual(manifest.input_file, result.output_file)
 
     def test_repeated_page_token_is_rejected(self):
         def fake_request(_url, _headers):

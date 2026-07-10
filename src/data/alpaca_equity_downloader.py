@@ -43,6 +43,8 @@ class DownloadRequest:
     source_timezone: str = "America/New_York"
     rth_only: bool = False
     limit: int = MAX_LIMIT
+    range_filenames: bool = False
+    overwrite: bool = False
 
 
 @dataclass(frozen=True)
@@ -81,6 +83,31 @@ def _sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
         while chunk := handle.read(chunk_size):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def download_output_filename(
+    request: DownloadRequest,
+    *,
+    provider: str = "alpaca",
+) -> str:
+    if not request.range_filenames:
+        return f"{request.symbol.upper()}_{request.interval}.csv"
+    session_scope = "rth" if request.rth_only else "all"
+    return (
+        f"{request.symbol.upper()}_{request.interval}_{request.start}_{request.end}_"
+        f"{provider}_{request.feed}_{request.adjustment}_{session_scope}.csv"
+    )
+
+
+def download_output_path(
+    request: DownloadRequest,
+    *,
+    provider: str = "alpaca",
+) -> Path:
+    return Path(request.output_dir) / download_output_filename(
+        request,
+        provider=provider,
+    )
 
 
 def _as_alpaca_datetime(value: str, *, end: bool = False) -> str:
@@ -175,7 +202,7 @@ class AlpacaEquityIntradayDownloader(EquityIntradayDownloader):
 
     def dry_run(self, request: DownloadRequest) -> DownloadResult:
         validate_download_request(request)
-        destination = Path(request.output_dir) / f"{request.symbol.upper()}_1min.csv"
+        destination = download_output_path(request)
         return DownloadResult(
             symbol=request.symbol.upper(),
             provider="alpaca",
@@ -196,6 +223,13 @@ class AlpacaEquityIntradayDownloader(EquityIntradayDownloader):
 
     def download(self, request: DownloadRequest) -> DownloadResult:
         validate_download_request(request)
+        output_dir = Path(request.output_dir)
+        destination = download_output_path(request)
+        if destination.exists() and not request.overwrite:
+            raise AlpacaDownloadError(
+                "OUTPUT_FILE_ALREADY_EXISTS",
+                f"Output file already exists: {destination}",
+            )
         headers = self.headers()
         page_token: str | None = None
         seen_tokens: set[str] = set()
@@ -232,9 +266,7 @@ class AlpacaEquityIntradayDownloader(EquityIntradayDownloader):
             source_timezone=request.source_timezone,
             rth_only=request.rth_only,
         )
-        output_dir = Path(request.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        destination = output_dir / f"{request.symbol.upper()}_1min.csv"
         frame.to_csv(destination, index=False)
         digest = _sha256_file(destination)
         first = str(frame.iloc[0]["timestamp"]) if not frame.empty else ""
@@ -337,4 +369,3 @@ def normalize_alpaca_bars(
         keep = frame["_timestamp_utc"].map(calendar.contains)
         frame = frame.loc[keep].reset_index(drop=True)
     return frame.loc[:, ["timestamp", "open", "high", "low", "close", "volume"]]
-

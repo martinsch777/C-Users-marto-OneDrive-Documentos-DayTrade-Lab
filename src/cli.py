@@ -22,8 +22,10 @@ from src.data import (
     AlpacaEquityIntradayDownloader,
     BinancePublicDataProvider,
     DownloadRequest,
+    EquityDatasetBuildError,
     EquitySessionCalendar,
     audit_equity_intraday_csv,
+    build_equity_dataset,
     build_dataset_manifest,
     load_csv,
     normalize_ohlcv,
@@ -399,6 +401,7 @@ def command_audit_data(args: argparse.Namespace) -> int:
         asset_class=args.asset_class,
         source_timezone=source_timezone,
         calendar=calendar,
+        excluded_sessions=args.excluded_sessions,
     )
     output_dir = args.output_dir or (
         Path("outputs") / "data_audit" / report.symbol
@@ -406,7 +409,7 @@ def command_audit_data(args: argparse.Namespace) -> int:
     paths = write_equity_intraday_audit_report(report, output_dir)
     verdict = "APTO" if report.apt_for_or_fvg_backtest else "NO APTO"
     print(f"Dataset {report.symbol} {report.timeframe}: {verdict} para OR/FVG")
-    print(f"Filas={report.rows_total}; sesiones={report.sessions}; faltantes={report.missing_bars}; fuera_RTH={report.outside_rth_bars}")
+    print(f"Filas={report.rows_total}; sesiones={report.sessions}; faltantes={report.missing_bars}; fuera_RTH={report.outside_rth_bars}; excluidas={report.total_excluded_sessions}")
     if "CSV_NOT_FOUND" in report.critical_warnings:
         print(f"CSV_NOT_FOUND: {Path(args.csv)}")
     if report.critical_warnings:
@@ -417,6 +420,41 @@ def command_audit_data(args: argparse.Namespace) -> int:
     print("Safety state: live trading=False, broker connected=False, orders sent=False, api_keys_used=False")
     if args.fail_on_not_fit and not report.apt_for_or_fvg_backtest:
         return 2
+    return 0
+
+
+def command_build_equity_dataset(args: argparse.Namespace) -> int:
+    source_timezone = args.source_timezone
+    try:
+        result = build_equity_dataset(
+            csv_path=args.csv,
+            symbol=args.symbol,
+            timeframe=args.timeframe,
+            asset_class=args.asset_class,
+            source_timezone=source_timezone,
+            output_dir=args.output_dir,
+            output_file=args.output_file,
+            start=args.start,
+            end=args.end,
+            provider=args.provider,
+            feed=args.feed,
+            adjustment=args.adjustment,
+            rth_only=args.rth_only,
+            excluded_sessions=args.excluded_sessions,
+            manifest_dir=args.manifest_dir,
+            range_filenames=args.range_filenames,
+            overwrite=args.overwrite,
+            verbose=args.verbose,
+            skip_audit=args.skip_audit,
+            skip_manifest=args.skip_manifest,
+        )
+    except (EquityDatasetBuildError, FileNotFoundError, ValueError) as exc:
+        code = getattr(exc, "code", exc.__class__.__name__)
+        print(f"{code}: {exc}")
+        print("Safety state: live trading=False, broker connected=False, orders sent=False, paper_internal=False, paper_broker=False")
+        return 2
+    print(json.dumps(result.to_record(), indent=2))
+    print("Safety state: live trading=False, broker connected=False, orders sent=False, paper_internal=False, paper_broker=False")
     return 0
 
 
@@ -465,6 +503,8 @@ def command_download_equity_intraday(args: argparse.Namespace) -> int:
                 output_dir=args.output_dir,
                 source_timezone=args.source_timezone,
                 rth_only=args.rth_only,
+                range_filenames=args.range_filenames,
+                overwrite=args.overwrite,
             )
             if args.dry_run:
                 result = downloader.dry_run(request)
@@ -481,6 +521,7 @@ def command_download_equity_intraday(args: argparse.Namespace) -> int:
                         asset_class="equity",
                         source_timezone=args.source_timezone,
                         calendar=EquitySessionCalendar.from_config({"source": "us_equity"}),
+                        excluded_sessions=args.excluded_sessions,
                     )
                     audit_report = report
                     result = type(result)(
@@ -603,7 +644,52 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Return exit code 2 when the dataset is not fit for OR/FVG backtests",
     )
+    audit.add_argument(
+        "--excluded-sessions",
+        help="JSON quality override file with symbol/date sessions to exclude",
+    )
     audit.set_defaults(func=command_audit_data)
+
+    build_equity = subparsers.add_parser(
+        "build-equity-dataset",
+        help="Build a curated equity/ETF CSV with audited session exclusions",
+    )
+    build_equity.add_argument("--csv", required=True)
+    build_equity.add_argument("--symbol", required=True)
+    build_equity.add_argument(
+        "--timeframe",
+        choices=["1min"],
+        default="1min",
+    )
+    build_equity.add_argument(
+        "--asset-class",
+        choices=["equity"],
+        default="equity",
+    )
+    build_equity.add_argument("--source-timezone", default="America/New_York")
+    build_equity.add_argument("--output-dir", default=str(Path("data") / "curated"))
+    build_equity.add_argument("--output-file")
+    build_equity.add_argument("--start", required=True)
+    build_equity.add_argument("--end", required=True)
+    build_equity.add_argument("--provider", default="alpaca")
+    build_equity.add_argument("--feed", choices=["sip", "iex"], default="sip")
+    build_equity.add_argument(
+        "--adjustment",
+        choices=["raw", "split", "dividend", "all"],
+        default="raw",
+    )
+    build_equity.add_argument("--rth-only", action="store_true")
+    build_equity.add_argument("--excluded-sessions", required=True)
+    build_equity.add_argument(
+        "--manifest-dir",
+        default=str(Path("data") / "manifests"),
+    )
+    build_equity.add_argument("--range-filenames", action="store_true")
+    build_equity.add_argument("--overwrite", action="store_true")
+    build_equity.add_argument("--verbose", action="store_true")
+    build_equity.add_argument("--skip-audit", action="store_true")
+    build_equity.add_argument("--skip-manifest", action="store_true")
+    build_equity.set_defaults(func=command_build_equity_dataset)
 
     calendar = subparsers.add_parser(
         "calendar-diagnostics",
@@ -635,6 +721,12 @@ def build_parser() -> argparse.ArgumentParser:
     equity_download.add_argument("--dry-run", action="store_true")
     equity_download.add_argument("--audit-after-download", action="store_true")
     equity_download.add_argument("--write-manifest", action="store_true")
+    equity_download.add_argument("--range-filenames", action="store_true")
+    equity_download.add_argument("--overwrite", action="store_true")
+    equity_download.add_argument(
+        "--excluded-sessions",
+        help="JSON quality override file passed to audit/manifest generation",
+    )
     equity_download.add_argument(
         "--manifest-dir",
         default=str(Path("data") / "manifests"),

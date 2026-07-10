@@ -51,13 +51,32 @@ python -m src.cli download-equity-intraday `
   --source-timezone America/New_York `
   --rth-only `
   --audit-after-download `
-  --write-manifest
+  --write-manifest `
+  --range-filenames
 ```
 
 Salida esperada:
 
+- `data\raw\QQQ_1min_2024-01-01_2024-12-31_alpaca_sip_raw_rth.csv`
+- `data\raw\SPY_1min_2024-01-01_2024-12-31_alpaca_sip_raw_rth.csv`
+
+Sin `--range-filenames`, se mantiene compatibilidad hacia atras:
+
 - `data\raw\QQQ_1min.csv`
 - `data\raw\SPY_1min.csv`
+
+Para evitar sobrescribir descargas anuales por accidente, el downloader aborta
+si el archivo destino existe:
+
+```text
+OUTPUT_FILE_ALREADY_EXISTS
+```
+
+Para regenerar de forma intencional:
+
+```powershell
+--overwrite
+```
 
 Columnas exactas:
 
