@@ -117,6 +117,20 @@ El CSV debe contener `timestamp,open,high,low,close,volume`. Los timestamps se
 normalizan a UTC. También se aceptan `datetime`, `date`, `time` u `open_time`
 como nombre de la columna temporal.
 
+Si una sesión queda incompleta por el proveedor, no se rellenan barras. Las
+exclusiones auditables viven en `data\quality_overrides\excluded_sessions.json`
+y el dataset curado se construye con:
+
+```powershell
+python -m src.cli build-equity-dataset `
+  --csv "data\raw\SPY_1min.csv" `
+  --symbol SPY `
+  --start 2023-01-01 `
+  --end 2023-12-31 `
+  --excluded-sessions "data\quality_overrides\excluded_sessions.json" `
+  --range-filenames
+```
+
 ## Tests
 
 ```powershell
