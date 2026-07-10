@@ -29,6 +29,7 @@ from src.data import (
     build_dataset_manifest,
     load_csv,
     normalize_ohlcv,
+    require_or_fvg_backtest_dataset_manifest,
     validate_ohlcv,
     write_dataset_manifest,
     write_equity_intraday_audit_report,
@@ -353,6 +354,19 @@ def command_backtest(args: argparse.Namespace) -> int:
         if args.asset_class == "equity"
         else None
     )
+    includes_or_fvg = args.strategy in (None, "opening_range_fvg")
+    if args.asset_class == "equity" and includes_or_fvg:
+        try:
+            require_or_fvg_backtest_dataset_manifest(
+                args.csv,
+                args.symbol,
+                args.timeframe,
+                manifest_dir=args.manifest_dir,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"OR_FVG_DATASET_GATE_FAILED: {exc}")
+            print("Safety state: live trading=False, broker connected=False, orders sent=False, paper_internal=False, paper_broker=False")
+            return 2
     frame, quality = load_csv(
         args.csv,
         args.timeframe,
@@ -612,6 +626,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--strategy",
         choices=available_strategy_names(),
         help="Run only the selected strategy instead of the full registry",
+    )
+    backtest.add_argument(
+        "--manifest-dir",
+        default=str(Path("data") / "manifests"),
+        help="Directory containing approved dataset manifests for OR/FVG backtests",
     )
     backtest.set_defaults(func=command_backtest)
 

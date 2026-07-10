@@ -269,6 +269,67 @@ def _validate_explicit_offline_safety_fields(
             )
 
 
+def _path_is_data_raw(path: str | Path) -> bool:
+    source = Path(path)
+    raw_root = Path("data") / "raw"
+    try:
+        source.resolve().relative_to(raw_root.resolve())
+        return True
+    except ValueError:
+        pass
+    parts = [part.lower() for part in source.parts]
+    return any(
+        left == "data" and right == "raw"
+        for left, right in zip(parts, parts[1:])
+    )
+
+
+def _same_manifest_path(expected: str | None, actual: str | Path) -> bool:
+    if not expected:
+        return False
+    expected_path = Path(str(expected))
+    actual_path = Path(actual)
+    try:
+        return (
+            expected_path == actual_path
+            or expected_path.resolve() == actual_path.resolve()
+        )
+    except OSError:
+        return expected_path == actual_path
+
+
+def require_or_fvg_backtest_dataset_manifest(
+    csv_path: str | Path,
+    symbol: str,
+    timeframe: str,
+    manifest_dir: str | Path = Path("data") / "manifests",
+) -> DatasetManifest:
+    if _path_is_data_raw(csv_path):
+        raise ValueError(
+            f"OR/FVG backtests must use curated datasets, not data/raw: {csv_path}"
+        )
+    manifest = require_approved_dataset_manifest(
+        csv_path,
+        symbol,
+        timeframe,
+        manifest_dir=manifest_dir,
+    )
+    if not (
+        _same_manifest_path(manifest.curated_file, csv_path)
+        or _same_manifest_path(manifest.output_file, csv_path)
+    ):
+        raise ValueError(
+            "OR/FVG backtest CSV must match manifest curated_file or output_file: "
+            f"{csv_path}"
+        )
+    for field in OFFLINE_SAFETY_FIELDS:
+        if getattr(manifest, field) is not False:
+            raise ValueError(
+                f"OR/FVG backtest manifest {field} is not false: {csv_path}"
+            )
+    return manifest
+
+
 def require_approved_dataset_manifest(
     csv_path: str | Path,
     symbol: str,
