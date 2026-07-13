@@ -131,12 +131,14 @@ def _find_missing_bars(
     asset_class: str,
     timezone: str,
     calendar: EquitySessionCalendar | None = None,
+    excluded_session_dates: set[str] | None = None,
 ) -> list[pd.Timestamp]:
     if len(frame) < 2:
         return []
     duration = pd.Timedelta(timeframe)
     timestamps = set(frame["timestamp"])
     equity_calendar = calendar or EquitySessionCalendar(timezone=timezone)
+    approved_excluded = excluded_session_dates or set()
     missing: list[pd.Timestamp] = []
     cursor = frame.iloc[0]["timestamp"] + duration
     last = frame.iloc[-1]["timestamp"]
@@ -146,7 +148,13 @@ def _find_missing_bars(
             or equity_calendar.contains(cursor)
         )
         if expected and cursor not in timestamps:
-            missing.append(cursor)
+            local_session_date = (
+                str(cursor.tz_convert(ZoneInfo(equity_calendar.timezone)).date())
+                if asset_class == "equity"
+                else ""
+            )
+            if local_session_date not in approved_excluded:
+                missing.append(cursor)
         cursor += duration
     return missing
 
@@ -159,6 +167,7 @@ def validate_ohlcv(
     timezone: str = "America/New_York",
     incomplete_candle_dropped: bool = False,
     calendar: EquitySessionCalendar | None = None,
+    excluded_session_dates: set[str] | None = None,
 ) -> DataQualityReport:
     required = set(CANONICAL_COLUMNS)
     if not required.issubset(frame.columns):
@@ -191,6 +200,7 @@ def validate_ohlcv(
             asset_class,
             timezone,
             calendar,
+            excluded_session_dates,
         ),
         outside_session_rows=outside,
         incomplete_candle_dropped=incomplete_candle_dropped,
@@ -206,6 +216,7 @@ def load_csv(
     reference_time: pd.Timestamp | None = None,
     source_timezone: str | None = None,
     calendar: EquitySessionCalendar | None = None,
+    excluded_session_dates: set[str] | None = None,
 ) -> tuple[pd.DataFrame, DataQualityReport]:
     raw = pd.read_csv(Path(path))
     frame, dropped = normalize_ohlcv(
@@ -221,5 +232,6 @@ def load_csv(
         asset_class=asset_class,
         incomplete_candle_dropped=dropped,
         calendar=calendar,
+        excluded_session_dates=excluded_session_dates,
     )
     return frame, report

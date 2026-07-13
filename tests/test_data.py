@@ -18,6 +18,31 @@ def raw_frame(timestamps):
     )
 
 
+def rth_session_frame(date: str, *, missing: set[str] | None = None) -> pd.DataFrame:
+    missing = missing or set()
+    timestamps = pd.date_range(
+        f"{date} 09:30",
+        f"{date} 15:30",
+        freq="30min",
+        tz="America/New_York",
+    )
+    kept = [stamp for stamp in timestamps if stamp.strftime("%H:%M") not in missing]
+    return pd.DataFrame(
+        {
+            "timestamp": pd.DatetimeIndex(kept).tz_convert("UTC"),
+            "open": [100.0] * len(kept),
+            "high": [101.0] * len(kept),
+            "low": [99.0] * len(kept),
+            "close": [100.5] * len(kept),
+            "volume": [1000.0] * len(kept),
+        }
+    )
+
+
+def concat_sessions(*frames: pd.DataFrame) -> pd.DataFrame:
+    return pd.concat(frames, ignore_index=True)
+
+
 class DataTests(unittest.TestCase):
     def test_rejects_naive_timestamp_without_source_timezone(self):
         with self.assertRaisesRegex(ValueError, "source_timezone"):
@@ -168,6 +193,93 @@ class DataTests(unittest.TestCase):
             calendar=EquitySessionCalendar(),
         )
         self.assertEqual(report.duplicate_timestamps, 1)
+        self.assertFalse(report.is_valid)
+
+    def test_approved_excluded_session_does_not_create_missing_bars(self):
+        frame = concat_sessions(
+            rth_session_frame("2023-06-02"),
+            rth_session_frame("2023-06-06"),
+        )
+
+        report = validate_ohlcv(
+            frame,
+            "30min",
+            asset_class="equity",
+            calendar=EquitySessionCalendar(),
+            excluded_session_dates={"2023-06-05"},
+        )
+
+        self.assertEqual(report.missing_bars, [])
+        self.assertTrue(report.is_valid)
+
+    def test_missing_bars_inside_approved_excluded_session_do_not_block(self):
+        frame = rth_session_frame("2023-06-05", missing={"10:30"})
+
+        report = validate_ohlcv(
+            frame,
+            "30min",
+            asset_class="equity",
+            calendar=EquitySessionCalendar(),
+            excluded_session_dates={"2023-06-05"},
+        )
+
+        self.assertEqual(report.missing_bars, [])
+        self.assertTrue(report.is_valid)
+
+    def test_missing_bars_outside_excluded_sessions_still_block(self):
+        frame = concat_sessions(
+            rth_session_frame("2023-06-02"),
+            rth_session_frame("2023-06-06"),
+        )
+
+        report = validate_ohlcv(
+            frame,
+            "30min",
+            asset_class="equity",
+            calendar=EquitySessionCalendar(),
+            excluded_session_dates={"2023-06-01"},
+        )
+
+        self.assertIn(
+            pd.Timestamp("2023-06-05 13:30:00+00:00"),
+            report.missing_bars,
+        )
+        self.assertFalse(report.is_valid)
+
+    def test_partial_missing_unapproved_session_still_blocks(self):
+        frame = concat_sessions(
+            rth_session_frame("2023-06-05"),
+            rth_session_frame("2023-06-06", missing={"10:30"}),
+        )
+
+        report = validate_ohlcv(
+            frame,
+            "30min",
+            asset_class="equity",
+            calendar=EquitySessionCalendar(),
+            excluded_session_dates={"2023-06-05"},
+        )
+
+        self.assertEqual(
+            report.missing_bars,
+            [pd.Timestamp("2023-06-06 14:30:00+00:00")],
+        )
+        self.assertFalse(report.is_valid)
+
+    def test_without_excluded_sessions_missing_bars_remain_required(self):
+        frame = concat_sessions(
+            rth_session_frame("2023-06-02"),
+            rth_session_frame("2023-06-06"),
+        )
+
+        report = validate_ohlcv(
+            frame,
+            "30min",
+            asset_class="equity",
+            calendar=EquitySessionCalendar(),
+        )
+
+        self.assertGreater(len(report.missing_bars), 0)
         self.assertFalse(report.is_valid)
 
 

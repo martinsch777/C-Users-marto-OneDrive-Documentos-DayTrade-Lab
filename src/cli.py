@@ -21,6 +21,7 @@ from src.data import (
     AlpacaDownloadError,
     AlpacaEquityIntradayDownloader,
     BinancePublicDataProvider,
+    DatasetManifest,
     DownloadRequest,
     EquityDatasetBuildError,
     EquitySessionCalendar,
@@ -40,6 +41,12 @@ from src.reports import ReportBundle, ReportWriter
 from src.scanner import IntradayScanner
 from src.strategies import available_strategy_names, build_strategies
 from src.utils import generate_synthetic_intraday
+
+
+OPENING_RANGE_MANIFEST_GATED_STRATEGIES = {
+    "opening_range_breakout",
+    "opening_range_fvg",
+}
 
 
 def _concat(frames: list[pd.DataFrame]) -> pd.DataFrame:
@@ -111,6 +118,8 @@ def run_research(
     asset_class: str,
     config_path: str | Path,
     strategy_name: str | None = None,
+    approved_excluded_session_dates: set[str] | None = None,
+    enforce_manifest_quality: bool = False,
 ) -> dict[str, Path]:
     config = load_config(config_path)
     data_config = config.section("data")
@@ -138,13 +147,23 @@ def run_research(
         timeframe,
         asset_class=asset_class,
         calendar=calendar,
+        excluded_session_dates=approved_excluded_session_dates,
     )
-    allow_missing = bool(config.section("data").get("allow_missing_bars", False))
+    allow_missing = (
+        bool(config.section("data").get("allow_missing_bars", False))
+        and not enforce_manifest_quality
+    )
     if not quality.is_valid and not allow_missing:
+        guidance = (
+            "Only sessions approved in the dataset manifest are ignored."
+            if enforce_manifest_quality
+            else (
+                "Fix it or explicitly set data.allow_missing_bars=true "
+                "for a diagnostic-only run."
+            )
+        )
         raise ValueError(
-            "Data failed quality controls. Fix it or explicitly set "
-            "data.allow_missing_bars=true for a diagnostic-only run. "
-            f"Report: {quality}"
+            f"Data failed quality controls. {guidance} Report: {quality}"
         )
 
     raw_config = deepcopy(config.raw)
@@ -332,6 +351,21 @@ def command_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def _backtest_includes_opening_range_manifest_gate(args: argparse.Namespace) -> bool:
+    return args.strategy is None or args.strategy in OPENING_RANGE_MANIFEST_GATED_STRATEGIES
+
+
+def _manifest_excluded_session_dates(manifest: DatasetManifest | None) -> set[str]:
+    if manifest is None:
+        return set()
+    dates: set[str] = set()
+    for session in manifest.excluded_sessions:
+        date = session.get("date")
+        if date:
+            dates.add(str(date))
+    return dates
+
+
 def command_backtest(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     data_config = config.section("data")
@@ -354,10 +388,11 @@ def command_backtest(args: argparse.Namespace) -> int:
         if args.asset_class == "equity"
         else None
     )
-    includes_or_fvg = args.strategy in (None, "opening_range_fvg")
+    gated_manifest: DatasetManifest | None = None
+    includes_or_fvg = _backtest_includes_opening_range_manifest_gate(args)
     if args.asset_class == "equity" and includes_or_fvg:
         try:
-            require_or_fvg_backtest_dataset_manifest(
+            gated_manifest = require_or_fvg_backtest_dataset_manifest(
                 args.csv,
                 args.symbol,
                 args.timeframe,
@@ -374,6 +409,7 @@ def command_backtest(args: argparse.Namespace) -> int:
         drop_incomplete=True,
         source_timezone=data_config.get("source_timezone"),
         calendar=calendar,
+        excluded_session_dates=_manifest_excluded_session_dates(gated_manifest),
     )
     print(
         f"Loaded {quality.rows} complete bars; "
@@ -386,6 +422,10 @@ def command_backtest(args: argparse.Namespace) -> int:
         asset_class=args.asset_class,
         config_path=args.config,
         strategy_name=args.strategy,
+        approved_excluded_session_dates=_manifest_excluded_session_dates(
+            gated_manifest
+        ),
+        enforce_manifest_quality=gated_manifest is not None,
     )
     print(f"Research report: {paths['html'].resolve()}")
     return 0

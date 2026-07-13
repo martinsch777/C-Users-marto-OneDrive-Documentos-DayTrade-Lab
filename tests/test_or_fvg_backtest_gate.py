@@ -6,7 +6,9 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from src.cli import build_parser, command_backtest
+import pandas as pd
+
+from src.cli import build_parser, command_backtest, run_research
 from src.data.dataset_manifest import (
     APPROVED_FOR_OR_FVG_BACKTEST,
     FAILED_AUDIT,
@@ -26,6 +28,45 @@ def write_csv(path: Path) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+def write_config(path: Path, *, allow_missing_bars: bool) -> Path:
+    path.write_text(
+        json.dumps(
+            {
+                "project": {"timezone": "America/New_York"},
+                "security": {
+                    "live_trading_enabled": False,
+                    "broker_connected": False,
+                    "orders_sent": False,
+                    "paper_internal_enabled": False,
+                    "paper_broker_enabled": False,
+                },
+                "data": {
+                    "allow_missing_bars": allow_missing_bars,
+                    "calendar": {"source": "us_equity"},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def canonical_gap_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "timestamp": [
+                pd.Timestamp("2024-07-01 13:30:00+00:00"),
+                pd.Timestamp("2024-07-01 14:30:00+00:00"),
+            ],
+            "open": [100.0, 100.0],
+            "high": [101.0, 101.0],
+            "low": [99.0, 99.0],
+            "close": [100.5, 100.5],
+            "volume": [1000.0, 1000.0],
+        }
+    )
 
 
 def write_manifest(
@@ -304,6 +345,25 @@ class ORFVGBacktestGateTests(unittest.TestCase):
         self.assertEqual(exit_code, 2)
         self.assertIn("OR_FVG_DATASET_GATE_FAILED", output.getvalue())
         load_csv.assert_not_called()
+
+    def test_manifest_quality_does_not_allow_allow_missing_bars_bypass(self):
+        directory = Path(tempfile.mkdtemp())
+        config_path = write_config(
+            directory / "config.json",
+            allow_missing_bars=True,
+        )
+
+        with self.assertRaisesRegex(ValueError, "Only sessions approved"):
+            run_research(
+                canonical_gap_frame(),
+                symbol="QQQ",
+                timeframe="30min",
+                asset_class="equity",
+                config_path=config_path,
+                strategy_name="opening_range_fvg",
+                approved_excluded_session_dates=set(),
+                enforce_manifest_quality=True,
+            )
 
 
 if __name__ == "__main__":
