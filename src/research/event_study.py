@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 from zoneinfo import ZoneInfo
@@ -11,6 +11,7 @@ import pandas as pd
 
 from src.data.loader import CANONICAL_COLUMNS
 from src.data.sessions import EquitySessionCalendar
+from src.timeframes import parse_timeframe_timedelta
 
 
 DEFAULT_EVENT_STUDY_HORIZONS: tuple[str, ...] = (
@@ -20,6 +21,7 @@ DEFAULT_EVENT_STUDY_HORIZONS: tuple[str, ...] = (
     "60min",
     "session_close",
 )
+DEFAULT_EVENT_STUDY_TIMEFRAME = "1min"
 MINUTE_HORIZONS: dict[str, pd.Timedelta] = {
     "5min": pd.Timedelta(minutes=5),
     "15min": pd.Timedelta(minutes=15),
@@ -64,6 +66,7 @@ class EventStudyRunConfig:
     dataset_sha256: str
     requested_start: str
     requested_end: str
+    timeframe: str = DEFAULT_EVENT_STUDY_TIMEFRAME
     horizons: tuple[str, ...] = DEFAULT_EVENT_STUDY_HORIZONS
     schema_version: int = 1
     created_at: str = field(
@@ -183,6 +186,7 @@ def _event_result_record(
     future_price: float | None,
     availability_status: str,
     missing_reason: str,
+    expected_session_close_timestamp: pd.Timestamp | None = None,
 ) -> dict[str, Any]:
     raw_return = (
         future_price / event_price - 1.0
@@ -206,6 +210,7 @@ def _event_result_record(
         "expected_direction": event.expected_direction,
         "event_price": event_price,
         "future_timestamp": future_timestamp,
+        "expected_session_close_timestamp": expected_session_close_timestamp,
         "future_price": future_price,
         "horizon": horizon,
         "raw_return": raw_return,
@@ -238,12 +243,37 @@ def _future_for_minute_horizon(
 def _future_for_session_close(
     *,
     event: EventStudyEvent,
-    session_rows: pd.DataFrame,
+    close_by_timestamp: dict[pd.Timestamp, float],
+    calendar: EquitySessionCalendar,
+    timeframe: str,
 ) -> tuple[pd.Timestamp | None, float | None, str, str]:
-    if session_rows.empty:
-        return None, None, "missing", "session_data_missing"
-    last = session_rows.iloc[-1]
-    return last["timestamp"], float(last["close"]), "available", ""
+    try:
+        session_date = date.fromisoformat(event.session_date)
+    except ValueError as exc:
+        raise ValueError(
+            f"Event {event.event_id} has invalid session_date: "
+            f"{event.session_date!r}"
+        ) from exc
+    expected = calendar.expected_timestamps(
+        session_date,
+        session_date,
+        timeframe,
+    )
+    if expected.empty:
+        raise ValueError(
+            f"Event {event.event_id} session {event.session_date!r} is not "
+            "recognized by the event-study calendar"
+        )
+    expected_close_timestamp = expected[-1]
+    future_price = close_by_timestamp.get(expected_close_timestamp)
+    if future_price is None:
+        return (
+            expected_close_timestamp,
+            None,
+            "missing",
+            "expected_session_close_bar_missing",
+        )
+    return expected_close_timestamp, future_price, "available", ""
 
 
 def compute_event_study(
@@ -251,10 +281,12 @@ def compute_event_study(
     events: Iterable[EventStudyEvent | dict[str, Any]],
     *,
     calendar: EquitySessionCalendar | None = None,
+    timeframe: str = DEFAULT_EVENT_STUDY_TIMEFRAME,
     horizons: Sequence[str] = DEFAULT_EVENT_STUDY_HORIZONS,
 ) -> pd.DataFrame:
     data = _normalize_frame(frame)
     normalized_events = _normalize_events(events)
+    parse_timeframe_timedelta(timeframe)
     selected_horizons = _validate_horizons(horizons)
     study_calendar = calendar or EquitySessionCalendar.from_config({"source": "us_equity"})
     timestamps = set(data["timestamp"])
@@ -273,13 +305,16 @@ def compute_event_study(
     records: list[dict[str, Any]] = []
     for event in normalized_events:
         event_price = close_by_timestamp[event.timestamp]
-        session_rows = data.loc[data["_session_date"] == event.session_date]
         for horizon in selected_horizons:
+            expected_session_close_timestamp = None
             if horizon == "session_close":
                 future_timestamp, future_price, status, reason = _future_for_session_close(
                     event=event,
-                    session_rows=session_rows,
+                    close_by_timestamp=close_by_timestamp,
+                    calendar=study_calendar,
+                    timeframe=timeframe,
                 )
+                expected_session_close_timestamp = future_timestamp
             else:
                 future_timestamp, future_price, status, reason = _future_for_minute_horizon(
                     event=event,
@@ -296,6 +331,7 @@ def compute_event_study(
                     future_price=future_price,
                     availability_status=status,
                     missing_reason=reason,
+                    expected_session_close_timestamp=expected_session_close_timestamp,
                 )
             )
     return pd.DataFrame(records)
@@ -377,7 +413,13 @@ def aggregate_event_results(
 
 def _serializable_event_results(frame: pd.DataFrame) -> pd.DataFrame:
     serializable = frame.copy()
-    for column in ("timestamp", "future_timestamp"):
+    for column in (
+        "timestamp",
+        "future_timestamp",
+        "expected_session_close_timestamp",
+    ):
+        if column not in serializable.columns:
+            continue
         serializable[column] = serializable[column].map(
             lambda value: value.isoformat() if pd.notna(value) else ""
         )
