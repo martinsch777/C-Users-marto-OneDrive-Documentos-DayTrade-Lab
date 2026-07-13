@@ -1,0 +1,353 @@
+schema_version: 1
+hypothesis_id: HYP-GAP
+name: Gap continuation versus gap reversal
+status: PREREGISTERED
+created_at: "2026-07-13"
+stage: event_study_preregistration
+source_document: docs/HYP_GAP_EVENT_STUDY_SPEC.md
+base_research_status: OR_FVG_BASE_DISCARDED_DO_NOT_OPTIMIZE
+safety_flags:
+  live_trading: false
+  broker_connected: false
+  orders_sent: false
+  paper_broker_enabled: false
+symbols:
+  - QQQ
+  - SPY
+timeframe: 1min
+timezone: America/New_York
+splits:
+  discovery:
+    start: "2022-01-01"
+    end: "2024-12-31"
+    status: documented_only
+  validation:
+    start: "2025-01-01"
+    end: "2025-12-31"
+    status: closed
+  final_holdout:
+    start: "2026-01-01"
+    end: "2026-07-06"
+    status: closed
+confirmation:
+  timestamp_local: "09:45"
+  event_price: close_of_confirmation_bar
+  rule: variables_may_use_only_information_available_at_or_before_confirmation_close
+gap_definition:
+  previous_session_close: last_valid_close_of_previous_approved_rth_session
+  current_session_open: open_of_09_30_america_new_york_bar
+  gap_return: current_session_open / previous_session_close - 1
+  gap_direction:
+    positive_gap: 1
+    negative_gap: -1
+    zero_gap: ineligible
+normalization:
+  atr_measure: previous_20_session_ATR
+  true_range: max(session_high_minus_low, abs(session_high_minus_previous_approved_session_close), abs(session_low_minus_previous_approved_session_close))
+  lookback_approved_sessions: 20
+  minimum_prior_approved_sessions: 20
+  includes_current_session: false
+  normalized_gap: abs(current_session_open - previous_session_close) / previous_20_session_ATR
+variables:
+  open_to_confirmation_return: confirmation_close / current_session_open - 1
+  confirmation_vwap: cumulative_vwap_from_09_30_through_09_45_confirmation_bar
+  relative_volume_0930_0945: current_09_30_09_45_volume / median_prior_20_approved_sessions_09_30_09_45_volume
+  opening_move_atr: abs(confirmation_close - current_session_open) / previous_20_session_ATR
+horizons:
+  - 5min
+  - 15min
+  - 30min
+  - 60min
+  - session_close
+availability_criteria:
+  - symbol_is_QQQ_or_SPY
+  - event_session_inside_discovery
+  - event_session_approved_by_manifest
+  - previous_rth_session_approved_by_manifest
+  - no_manifest_excluded_session_used_as_event_session
+  - no_manifest_excluded_session_used_as_previous_session
+  - minimum_20_prior_approved_rth_sessions_for_warmup
+  - required_09_30_open_present
+  - required_09_45_confirmation_close_present
+  - required_09_30_09_45_vwap_inputs_present
+  - required_09_30_09_45_volume_inputs_present
+  - timestamps_inside_rth
+exclusion_criteria:
+  - gap_return_equals_zero
+  - previous_approved_session_absent_or_incomplete
+  - current_session_incomplete_before_confirmation
+  - event_session_excluded_by_manifest
+  - previous_session_excluded_by_manifest
+  - required_bar_missing
+  - timestamp_outside_rth
+  - feature_requires_information_after_confirmation
+early_close_rule: calendar_approved_early_closes_may_be_eligible_only_if_09_30_to_09_45_inputs_exist_and_session_close_horizon_is_validated_against_expected_calendar_close_before_real_execution
+session_close_engine_note: current_event_study_infrastructure_uses_last_available_close_in_session_dataframe; validate_against_calendar_close_before_running_HYP_GAP_on_real_data
+variant_budget:
+  total_variants: 6
+  continuation_variants: 3
+  reversal_variants: 3
+  additional_variants_allowed_in_discovery: false
+promotion_budget:
+  max_continuation_variants_to_validation: 1
+  max_reversal_variants_to_validation: 1
+metrics_required:
+  - event_count
+  - mean_return
+  - median_return
+  - positive_rate
+  - standard_deviation
+  - standard_error
+  - confidence_intervals
+  - results_by_year
+  - results_by_symbol
+  - results_by_horizon
+  - qqq_spy_stability
+discard_criteria:
+  minimum_total_available_events: 100
+  max_single_year_event_concentration: 0.50
+  reject_if:
+    - qqq_spy_opposite_direction_without_preregistered_rationale
+    - positive_mean_caused_by_few_outliers
+    - median_or_positive_rate_incompatible_with_hypothesis
+    - sign_opposite_expected_direction
+    - no_reasonable_yearly_stability
+    - signal_only_in_one_isolated_horizon
+    - excessive_dependence_on_one_variant
+    - economically_insignificant_before_costs
+    - leakage_or_lookahead_or_timestamp_misalignment
+advance_criteria:
+  - sufficient_sample_size
+  - sign_coherent_with_preregistered_hypothesis
+  - reasonable_year_by_year_stability
+  - behavior_not_dependent_on_single_symbol
+  - mean_and_median_coherent
+  - confidence_intervals_reported
+  - no_leakage_or_lookahead
+  - reproducible_outputs_from_daytrade_lab
+tradingview_policy:
+  allowed:
+    - visual_inspection
+    - check_detected_events_appear_in_expected_chart_locations
+    - detect_temporal_interpretation_errors
+  prohibited:
+    - change_thresholds_after_results
+    - approve_hypothesis
+    - replace_daytrade_lab_outputs
+variants:
+  - hypothesis_id: HYP-GAP
+    variant_id: HYP-GAP-01
+    name: Large Gap Holds Previous Close
+    family: continuation
+    rationale: Large overnight repricing that remains accepted through the first 15 minutes may reflect unresolved inventory imbalance or news absorption.
+    gap_definition: current_session_open / previous_session_close - 1
+    threshold:
+      normalized_gap_min: 0.50
+    confirmation_timestamp: "09:45 America/New_York"
+    event_conditions:
+      - normalized_gap >= 0.50
+      - gap_direction != 0
+      - confirmation_close_remains_on_gap_side_of_previous_session_close
+    expected_direction: gap_direction
+    variables_used:
+      - normalized_gap
+      - previous_session_close
+      - current_session_open
+      - confirmation_close
+    warmup_required: 20_prior_approved_rth_sessions
+    horizons: [5min, 15min, 30min, 60min, session_close]
+    symbols: [QQQ, SPY]
+    discovery_period:
+      start: "2022-01-01"
+      end: "2024-12-31"
+    availability_criteria_ref: availability_criteria
+    exclusion_criteria_ref: exclusion_criteria
+    expected_result: positive_directional_return_after_confirmation
+    discard_criteria_ref: discard_criteria
+    initial_status: PREREGISTERED
+    safety_flags:
+      live_trading: false
+      broker_connected: false
+      orders_sent: false
+      paper_broker_enabled: false
+  - hypothesis_id: HYP-GAP
+    variant_id: HYP-GAP-02
+    name: Gap Continuation With VWAP Acceptance
+    family: continuation
+    rationale: Price accepted on the gap side of both prior close and early VWAP may indicate that early participation agrees with the overnight move.
+    gap_definition: current_session_open / previous_session_close - 1
+    threshold:
+      normalized_gap_min: 0.35
+    confirmation_timestamp: "09:45 America/New_York"
+    event_conditions:
+      - normalized_gap >= 0.35
+      - confirmation_close_remains_on_gap_side_of_previous_session_close
+      - confirmation_close_is_on_gap_side_of_confirmation_vwap
+    expected_direction: gap_direction
+    variables_used:
+      - normalized_gap
+      - previous_session_close
+      - current_session_open
+      - confirmation_close
+      - confirmation_vwap
+    warmup_required: 20_prior_approved_rth_sessions
+    horizons: [5min, 15min, 30min, 60min, session_close]
+    symbols: [QQQ, SPY]
+    discovery_period:
+      start: "2022-01-01"
+      end: "2024-12-31"
+    availability_criteria_ref: availability_criteria
+    exclusion_criteria_ref: exclusion_criteria
+    expected_result: positive_directional_return_after_confirmation
+    discard_criteria_ref: discard_criteria
+    initial_status: PREREGISTERED
+    safety_flags:
+      live_trading: false
+      broker_connected: false
+      orders_sent: false
+      paper_broker_enabled: false
+  - hypothesis_id: HYP-GAP
+    variant_id: HYP-GAP-03
+    name: Gap Continuation With Opening Follow-Through
+    family: continuation
+    rationale: A gap followed by additional movement in the same direction before 09:45 may signal an opening drive rather than a liquidity fade.
+    gap_definition: current_session_open / previous_session_close - 1
+    threshold:
+      normalized_gap_min: 0.35
+      opening_move_atr_min: 0.10
+    confirmation_timestamp: "09:45 America/New_York"
+    event_conditions:
+      - normalized_gap >= 0.35
+      - open_to_confirmation_return_has_same_sign_as_gap_direction
+      - opening_move_atr >= 0.10
+    expected_direction: gap_direction
+    variables_used:
+      - normalized_gap
+      - open_to_confirmation_return
+      - opening_move_atr
+      - current_session_open
+      - confirmation_close
+    warmup_required: 20_prior_approved_rth_sessions
+    horizons: [5min, 15min, 30min, 60min, session_close]
+    symbols: [QQQ, SPY]
+    discovery_period:
+      start: "2022-01-01"
+      end: "2024-12-31"
+    availability_criteria_ref: availability_criteria
+    exclusion_criteria_ref: exclusion_criteria
+    expected_result: positive_directional_return_after_confirmation
+    discard_criteria_ref: discard_criteria
+    initial_status: PREREGISTERED
+    safety_flags:
+      live_trading: false
+      broker_connected: false
+      orders_sent: false
+      paper_broker_enabled: false
+  - hypothesis_id: HYP-GAP
+    variant_id: HYP-GAP-04
+    name: Large Gap Rejected Through Previous Close
+    family: reversal
+    rationale: A large overnight move rejected back through the previous close by 09:45 may indicate liquidity provision against an overextended open.
+    gap_definition: current_session_open / previous_session_close - 1
+    threshold:
+      normalized_gap_min: 0.50
+    confirmation_timestamp: "09:45 America/New_York"
+    event_conditions:
+      - normalized_gap >= 0.50
+      - gap_direction != 0
+      - confirmation_close_is_on_opposite_side_of_previous_session_close_from_gap
+    expected_direction: "-gap_direction"
+    variables_used:
+      - normalized_gap
+      - previous_session_close
+      - current_session_open
+      - confirmation_close
+    warmup_required: 20_prior_approved_rth_sessions
+    horizons: [5min, 15min, 30min, 60min, session_close]
+    symbols: [QQQ, SPY]
+    discovery_period:
+      start: "2022-01-01"
+      end: "2024-12-31"
+    availability_criteria_ref: availability_criteria
+    exclusion_criteria_ref: exclusion_criteria
+    expected_result: positive_directional_return_after_confirmation
+    discard_criteria_ref: discard_criteria
+    initial_status: PREREGISTERED
+    safety_flags:
+      live_trading: false
+      broker_connected: false
+      orders_sent: false
+      paper_broker_enabled: false
+  - hypothesis_id: HYP-GAP
+    variant_id: HYP-GAP-05
+    name: Gap Reversal With VWAP Rejection
+    family: reversal
+    rationale: Failure to hold early VWAP after a gap may show that the initial repricing is not accepted by regular-session participants.
+    gap_definition: current_session_open / previous_session_close - 1
+    threshold:
+      normalized_gap_min: 0.35
+    confirmation_timestamp: "09:45 America/New_York"
+    event_conditions:
+      - normalized_gap >= 0.35
+      - open_to_confirmation_return_has_opposite_sign_from_gap_direction
+      - confirmation_close_is_on_opposite_side_of_confirmation_vwap_from_gap
+    expected_direction: "-gap_direction"
+    variables_used:
+      - normalized_gap
+      - open_to_confirmation_return
+      - confirmation_vwap
+      - current_session_open
+      - confirmation_close
+    warmup_required: 20_prior_approved_rth_sessions
+    horizons: [5min, 15min, 30min, 60min, session_close]
+    symbols: [QQQ, SPY]
+    discovery_period:
+      start: "2022-01-01"
+      end: "2024-12-31"
+    availability_criteria_ref: availability_criteria
+    exclusion_criteria_ref: exclusion_criteria
+    expected_result: positive_directional_return_after_confirmation
+    discard_criteria_ref: discard_criteria
+    initial_status: PREREGISTERED
+    safety_flags:
+      live_trading: false
+      broker_connected: false
+      orders_sent: false
+      paper_broker_enabled: false
+  - hypothesis_id: HYP-GAP
+    variant_id: HYP-GAP-06
+    name: Gap Reversal With Weak Participation
+    family: reversal
+    rationale: A gap that immediately moves against its direction on below-normal early participation may represent a weak open vulnerable to reversal.
+    gap_definition: current_session_open / previous_session_close - 1
+    threshold:
+      normalized_gap_min: 0.35
+      relative_volume_0930_0945_max: 0.90
+    confirmation_timestamp: "09:45 America/New_York"
+    event_conditions:
+      - normalized_gap >= 0.35
+      - open_to_confirmation_return_has_opposite_sign_from_gap_direction
+      - relative_volume_0930_0945 <= 0.90
+    expected_direction: "-gap_direction"
+    variables_used:
+      - normalized_gap
+      - open_to_confirmation_return
+      - relative_volume_0930_0945
+      - current_session_open
+      - confirmation_close
+    warmup_required: 20_prior_approved_rth_sessions
+    horizons: [5min, 15min, 30min, 60min, session_close]
+    symbols: [QQQ, SPY]
+    discovery_period:
+      start: "2022-01-01"
+      end: "2024-12-31"
+    availability_criteria_ref: availability_criteria
+    exclusion_criteria_ref: exclusion_criteria
+    expected_result: positive_directional_return_after_confirmation
+    discard_criteria_ref: discard_criteria
+    initial_status: PREREGISTERED
+    safety_flags:
+      live_trading: false
+      broker_connected: false
+      orders_sent: false
+      paper_broker_enabled: false
