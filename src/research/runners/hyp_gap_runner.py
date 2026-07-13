@@ -149,6 +149,69 @@ def _first_session_date(frame: pd.DataFrame, calendar: EquitySessionCalendar) ->
     return _session_date(frame.iloc[0]["timestamp"], calendar)
 
 
+def _present_session_dates(frame: pd.DataFrame, calendar: EquitySessionCalendar) -> set[str]:
+    return {
+        _session_date(timestamp, calendar)
+        for timestamp in frame["timestamp"]
+    }
+
+
+def _calendar_sessions(start: date, end: date, calendar: EquitySessionCalendar) -> list[str]:
+    return [
+        item.date().isoformat()
+        for item in pd.date_range(start, end, freq="D")
+        if calendar.session_close(item.date()) is not None
+    ]
+
+
+def _effective_event_bounds(
+    *,
+    requested_start: date,
+    requested_end: date,
+    present_sessions: set[str],
+    excluded_dates: set[str],
+    calendar: EquitySessionCalendar,
+) -> tuple[str, str, list[str]]:
+    calendar_sessions = _calendar_sessions(requested_start, requested_end, calendar)
+    if not calendar_sessions:
+        raise ValueError(
+            "HYP-GAP requested range contains no recognized trading sessions"
+        )
+    requested_start_is_session = requested_start.isoformat() in calendar_sessions
+    requested_end_is_session = requested_end.isoformat() in calendar_sessions
+    if (
+        requested_start_is_session
+        and requested_start.isoformat() not in excluded_dates
+        and requested_start.isoformat() not in present_sessions
+    ):
+        raise ValueError(
+            "HYP-GAP expected boundary trading session is absent from dataset: "
+            f"{requested_start.isoformat()}"
+        )
+    if (
+        requested_end_is_session
+        and requested_end.isoformat() not in excluded_dates
+        and requested_end.isoformat() not in present_sessions
+    ):
+        raise ValueError(
+            "HYP-GAP expected boundary trading session is absent from dataset: "
+            f"{requested_end.isoformat()}"
+        )
+    approved_sessions: list[str] = []
+    skipped_excluded: list[str] = []
+    for session_date in calendar_sessions:
+        if session_date in excluded_dates:
+            skipped_excluded.append(session_date)
+            continue
+        if session_date in present_sessions:
+            approved_sessions.append(session_date)
+    if not approved_sessions:
+        raise ValueError(
+            "HYP-GAP requested range contains no approved sessions present in dataset"
+        )
+    return approved_sessions[0], approved_sessions[-1], skipped_excluded
+
+
 def _fingerprint(payload: dict[str, Any]) -> str:
     import hashlib
 
@@ -278,13 +341,22 @@ def run_hyp_gap_event_study(request: HypGapRunRequest) -> HypGapRunResult:
         raise ValueError("HYP-GAP runner dataset failed OHLCV quality validation")
     loaded = _frame_until_end(frame, requested_end, calendar)
     loaded_warmup_start = _first_session_date(loaded, calendar)
+    effective_event_start, effective_event_end, skipped_excluded_bounds = (
+        _effective_event_bounds(
+            requested_start=requested_start,
+            requested_end=requested_end,
+            present_sessions=_present_session_dates(loaded, calendar),
+            excluded_dates=excluded_dates,
+            calendar=calendar,
+        )
+    )
     detection = detect_hyp_gap_events(
         loaded,
         symbol=request.symbol,
         timeframe=request.timeframe,
         start_date=loaded_warmup_start,
-        end_date=requested_end.isoformat(),
-        event_start_date=requested_start.isoformat(),
+        end_date=effective_event_end,
+        event_start_date=effective_event_start,
         calendar=calendar,
         excluded_session_dates=excluded_dates,
         config_path=request.preregistration_path,
@@ -345,8 +417,25 @@ def run_hyp_gap_event_study(request: HypGapRunRequest) -> HypGapRunResult:
         "requested_start": requested_start.isoformat(),
         "requested_end": requested_end.isoformat(),
         "loaded_warmup_start": loaded_warmup_start,
-        "effective_event_start": requested_start.isoformat(),
-        "effective_event_end": requested_end.isoformat(),
+        "effective_event_start": effective_event_start,
+        "effective_event_end": effective_event_end,
+        "calendar_boundary_adjustments": {
+            "requested_start_was_trading_session": (
+                requested_start.isoformat() in _calendar_sessions(
+                    requested_start,
+                    requested_start,
+                    calendar,
+                )
+            ),
+            "requested_end_was_trading_session": (
+                requested_end.isoformat() in _calendar_sessions(
+                    requested_end,
+                    requested_end,
+                    calendar,
+                )
+            ),
+            "excluded_sessions_skipped_inside_requested_range": skipped_excluded_bounds,
+        },
         "horizons": list(preregistration.horizons),
         "variant_ids": [variant.variant_id for variant in preregistration.variants],
         "total_variants_expected": 6,

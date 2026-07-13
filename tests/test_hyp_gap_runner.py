@@ -2,10 +2,12 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 
 from src.data import sha256_file
+from src.research.hypotheses.hyp_gap import HypGapDetectionResult, HypGapDetectionSummary
 from src.research.runners import HypGapRunRequest, run_hyp_gap_event_study
 from tests.test_hyp_gap import CALENDAR, make_session, session_days, synthetic_frame
 
@@ -138,6 +140,8 @@ class HypGapRunnerTests(unittest.TestCase):
         self.assertEqual(manifest["preregistration_hash"], manifest["config_hash"])
         self.assertEqual(manifest["requested_start"], "2024-08-01")
         self.assertEqual(manifest["loaded_warmup_start"], "2024-07-01")
+        self.assertEqual(manifest["effective_event_start"], "2024-08-01")
+        self.assertEqual(manifest["effective_event_end"], "2024-08-01")
         self.assertFalse(manifest["safety_flags"]["orders_sent"])
         self.assertFalse(manifest["results_approved_for_validation"])
         events = pd.read_csv(output / "events.csv")
@@ -232,6 +236,173 @@ class HypGapRunnerTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs):
                 with self.assertRaisesRegex(ValueError, message):
                     run_hyp_gap_event_study(request(csv_path, manifest, Path(tempfile.mkdtemp()) / "out", **kwargs))
+
+    def test_calendar_boundaries_normalize_weekends_holidays_and_regular_sessions(self):
+        cases = [
+            ("2024-07-27", "2024-08-01", "2024-07-29", "2024-08-01"),
+            ("2024-07-28", "2024-08-01", "2024-07-29", "2024-08-01"),
+            ("2024-07-04", "2024-08-01", "2024-07-05", "2024-08-01"),
+            ("2024-07-01", "2024-08-03", "2024-07-01", "2024-08-02"),
+            ("2024-07-01", "2024-08-04", "2024-07-01", "2024-08-02"),
+            ("2024-07-01", "2024-07-04", "2024-07-01", "2024-07-03"),
+            ("2024-07-27", "2024-08-04", "2024-07-29", "2024-08-02"),
+            ("2024-07-01", "2024-08-01", "2024-07-01", "2024-08-01"),
+        ]
+        frame = pd.concat(
+            [
+                synthetic_frame(event_day="2024-08-01", prior_count=24),
+                make_session("2024-08-02"),
+            ],
+            ignore_index=True,
+        )
+        for start, end, effective_start, effective_end in cases:
+            with self.subTest(start=start, end=end):
+                directory, csv_path, manifest, output = self.setup_run(frame=frame)
+                run_hyp_gap_event_study(
+                    request(
+                        csv_path,
+                        manifest,
+                        output,
+                        requested_start=start,
+                        requested_end=end,
+                    )
+                )
+                payload = json.loads((output / "run_manifest.json").read_text(encoding="utf-8"))
+                self.assertEqual(payload["requested_start"], start)
+                self.assertEqual(payload["requested_end"], end)
+                self.assertEqual(payload["effective_event_start"], effective_start)
+                self.assertEqual(payload["effective_event_end"], effective_end)
+
+    def test_requested_range_without_trading_session_is_rejected(self):
+        _, csv_path, manifest, _ = self.setup_run()
+
+        with self.assertRaisesRegex(ValueError, "no recognized trading sessions"):
+            run_hyp_gap_event_study(
+                request(
+                    csv_path,
+                    manifest,
+                    Path(tempfile.mkdtemp()) / "out",
+                    requested_start="2024-07-06",
+                    requested_end="2024-07-07",
+                )
+            )
+
+    def test_expected_boundary_session_absent_is_not_skipped_silently(self):
+        frame = synthetic_frame(event_day="2024-08-01", prior_count=24)
+        missing_boundary = frame.loc[
+            frame["timestamp"].map(
+                lambda value: value.tz_convert("America/New_York").date().isoformat()
+            )
+            != "2024-08-01"
+        ].reset_index(drop=True)
+        directory, csv_path, manifest, output = self.setup_run(frame=missing_boundary)
+
+        with self.assertRaisesRegex(ValueError, "boundary.*absent from dataset: 2024-08-01"):
+            run_hyp_gap_event_study(
+                request(
+                    csv_path,
+                    manifest,
+                    output,
+                    requested_start="2024-08-01",
+                    requested_end="2024-08-01",
+                )
+            )
+
+    def test_boundary_session_excluded_is_skipped_and_audited(self):
+        frame = pd.concat(
+            [
+                synthetic_frame(event_day="2024-08-01", prior_count=24),
+                make_session("2024-08-02"),
+            ],
+            ignore_index=True,
+        )
+        excluded_record = {
+            "symbol": "QQQ",
+            "date": "2024-08-01",
+            "reason": "synthetic excluded boundary",
+            "policy": "exclude_entire_session",
+            "missing_timestamps": [],
+        }
+        directory, csv_path, manifest, output = self.setup_run(
+            frame=frame,
+            excluded_sessions=[excluded_record],
+        )
+
+        run_hyp_gap_event_study(
+            request(
+                csv_path,
+                manifest,
+                output,
+                requested_start="2024-07-31",
+                requested_end="2024-08-02",
+            )
+        )
+        payload = json.loads((output / "run_manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["effective_event_start"], "2024-07-31")
+        self.assertEqual(payload["effective_event_end"], "2024-08-02")
+        self.assertIn(
+            "2024-08-01",
+            payload["calendar_boundary_adjustments"][
+                "excluded_sessions_skipped_inside_requested_range"
+            ],
+        )
+
+    def test_regression_calendar_start_2022_01_01_uses_calendar_session(self):
+        frame = pd.concat(
+            [
+                make_session("2022-01-03"),
+                make_session("2024-12-31", profile="positive_continuation"),
+            ],
+            ignore_index=True,
+        )
+        directory, csv_path, manifest, output = self.setup_run(frame=frame)
+        fake_report = type("Report", (), {"is_valid": True})()
+        fake_detection = HypGapDetectionResult(
+            events=(),
+            summary=HypGapDetectionSummary(
+                total_sessions_examined=0,
+                eligible_sessions=0,
+                ineligible_sessions=0,
+                ineligible_reasons={},
+                events_by_variant={},
+                events_by_symbol={},
+                first_date_examined="2022-01-03",
+                last_date_examined="2024-12-31",
+                config_hash="synthetic",
+                safety_flags={
+                    "live_trading": False,
+                    "broker_connected": False,
+                    "orders_sent": False,
+                    "paper_broker_enabled": False,
+                },
+            ),
+        )
+
+        with patch(
+            "src.research.runners.hyp_gap_runner.load_csv",
+            return_value=(frame, fake_report),
+        ), patch(
+            "src.research.runners.hyp_gap_runner.detect_hyp_gap_events",
+            return_value=fake_detection,
+        ):
+            run_hyp_gap_event_study(
+                request(
+                    csv_path,
+                    manifest,
+                    output,
+                    requested_start="2022-01-01",
+                    requested_end="2024-12-31",
+                )
+            )
+        payload = json.loads((output / "run_manifest.json").read_text(encoding="utf-8"))
+        expected_first_session = CALENDAR.expected_timestamps(
+            pd.Timestamp("2022-01-01").date(),
+            pd.Timestamp("2022-01-10").date(),
+            "1min",
+        )[0].tz_convert("America/New_York").date().isoformat()
+        self.assertEqual(payload["requested_start"], "2022-01-01")
+        self.assertEqual(payload["effective_event_start"], expected_first_session)
+        self.assertNotEqual(payload["effective_event_start"], "2022-01-01")
 
     def test_warmup_causal_no_events_before_start_and_future_bars_ignored(self):
         frame = synthetic_frame()
