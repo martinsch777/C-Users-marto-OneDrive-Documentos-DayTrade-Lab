@@ -435,3 +435,37 @@ def require_approved_dataset_manifest(
         f"No approved dataset manifest found for {source} "
         f"({wanted_symbol} {timeframe})"
     )
+
+
+def require_approved_dataset_manifest_file(
+    csv_path: str | Path,
+    symbol: str,
+    timeframe: str,
+    manifest_path: str | Path,
+) -> DatasetManifest:
+    source = Path(csv_path)
+    candidate = Path(manifest_path)
+    if _path_is_data_raw(source):
+        raise ValueError(f"Approved datasets must not come from data/raw: {source}")
+    if not candidate.exists():
+        raise FileNotFoundError(f"Dataset manifest not found: {candidate}")
+    payload = json.loads(candidate.read_text(encoding="utf-8"))
+    wanted_symbol = symbol.upper()
+    if payload.get("symbol") != wanted_symbol:
+        raise ValueError(
+            f"Dataset manifest symbol mismatch: {payload.get('symbol')!r} "
+            f"!= {wanted_symbol!r}"
+        )
+    if payload.get("timeframe") != timeframe:
+        raise ValueError(
+            f"Dataset manifest timeframe mismatch: {payload.get('timeframe')!r} "
+            f"!= {timeframe!r}"
+        )
+    if not _matches_curated_or_output(payload, source):
+        raise ValueError(
+            "Dataset CSV must match manifest curated_file or output_file: "
+            f"{source}"
+        )
+    expected_hash = sha256_file(source)
+    _validate_approved_manifest_payload(payload, candidate, expected_hash)
+    return DatasetManifest(**payload)

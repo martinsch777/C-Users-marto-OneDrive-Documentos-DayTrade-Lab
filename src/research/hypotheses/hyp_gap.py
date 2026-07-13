@@ -832,6 +832,7 @@ def detect_hyp_gap_events(
     timeframe: str,
     start_date: str | date,
     end_date: str | date,
+    event_start_date: str | date | None = None,
     calendar: EquitySessionCalendar | None = None,
     excluded_session_dates: set[str] | None = None,
     config_path: str | Path = DEFAULT_HYP_GAP_CONFIG_PATH,
@@ -848,12 +849,19 @@ def detect_hyp_gap_events(
     parse_timeframe_timedelta(timeframe)
     requested_start = date.fromisoformat(str(start_date))
     requested_end = date.fromisoformat(str(end_date))
+    effective_event_start = (
+        date.fromisoformat(str(event_start_date))
+        if event_start_date is not None
+        else requested_start
+    )
     if requested_start < preregistration.discovery_start:
         raise ValueError("HYP-GAP detection request starts before discovery")
     if requested_end > preregistration.discovery_end:
         raise ValueError("HYP-GAP detection request must not open validation or holdout")
     if requested_start > requested_end:
         raise ValueError("HYP-GAP detection start_date must be on or before end_date")
+    if effective_event_start < requested_start or effective_event_start > requested_end:
+        raise ValueError("HYP-GAP event_start_date must be inside the detection range")
     study_calendar = calendar or EquitySessionCalendar.from_config({"source": "us_equity"})
     if study_calendar.timezone != preregistration.timezone:
         raise ValueError(
@@ -883,9 +891,10 @@ def detect_hyp_gap_events(
     eligible_session_keys: set[str] = set()
 
     for session_date in session_dates:
+        is_event_candidate = date.fromisoformat(session_date) >= effective_event_start
         session_present = session_date in present_sessions
         session_excluded = session_date in excluded
-        if session_present and not session_excluded:
+        if is_event_candidate and session_present and not session_excluded:
             variables, reason = _build_session_variables(
                 symbol=wanted_symbol,
                 session_date=session_date,
@@ -930,9 +939,9 @@ def detect_hyp_gap_events(
                             ),
                         )
                     )
-        elif session_excluded:
+        elif is_event_candidate and session_excluded:
             ineligible_reasons["excluded_session"] += 1
-        elif not session_present:
+        elif is_event_candidate and not session_present:
             ineligible_reasons["missing_required_variable"] += 1
 
         if session_present and not session_excluded:
@@ -955,9 +964,14 @@ def detect_hyp_gap_events(
     for reason in INELIGIBLE_REASONS:
         ineligible_reasons.setdefault(reason, 0)
     summary = HypGapDetectionSummary(
-        total_sessions_examined=len(session_dates),
+        total_sessions_examined=sum(
+            date.fromisoformat(item) >= effective_event_start for item in session_dates
+        ),
         eligible_sessions=len(eligible_session_keys),
-        ineligible_sessions=len(session_dates) - len(eligible_session_keys),
+        ineligible_sessions=sum(
+            date.fromisoformat(item) >= effective_event_start for item in session_dates
+        )
+        - len(eligible_session_keys),
         ineligible_reasons=dict(sorted(ineligible_reasons.items())),
         events_by_variant=dict(sorted(events_by_variant.items())),
         events_by_symbol=events_by_symbol,
