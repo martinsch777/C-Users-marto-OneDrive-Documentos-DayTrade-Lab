@@ -120,4 +120,4 @@ Before any refinement, save:
 
 Do not optimize these base parameters directly as if an edge had already been found.
 
-A small engineering cleanup remains: replace `pd.Timedelta(timeframe)` with explicit units to remove the warning. That should be a separate commit and should not change strategy results.
+The minor `pd.Timedelta(timeframe)` deprecation warning was fixed in a separate technical change (`9734ed3`) by using explicit units through the centralized `parse_timeframe_timedelta` parser. That cleanup did not modify strategies, parameters, signals, or research results, and the full suite passed 172 tests.
