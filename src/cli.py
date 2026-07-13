@@ -40,6 +40,7 @@ from src.replay import MarketReplay
 from src.reports import ReportBundle, ReportWriter
 from src.scanner import IntradayScanner
 from src.strategies import available_strategy_names, build_strategies
+from src.timeframes import parse_timeframe_timedelta
 from src.utils import generate_synthetic_intraday
 
 
@@ -275,7 +276,12 @@ def run_research(
         },
     )
     replay_strategy = strategies[0]
-    replay_start = max(0, len(frame) - 3 * max(1, int(pd.Timedelta("6h30min") / pd.Timedelta(timeframe))))
+    replay_session_duration = pd.Timedelta(hours=6, minutes=30)
+    replay_bar_duration = parse_timeframe_timedelta(timeframe)
+    replay_start = max(
+        0,
+        len(frame) - 3 * max(1, int(replay_session_duration / replay_bar_duration)),
+    )
     replay_frame = frame.iloc[replay_start:].reset_index(drop=True)
     replay = MarketReplay(
         raw_config.get("risk", {}),

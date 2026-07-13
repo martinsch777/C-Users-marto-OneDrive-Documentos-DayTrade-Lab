@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from src.timeframes import parse_timeframe_timedelta
+
 
 def generate_synthetic_intraday(
     *,
@@ -16,7 +18,7 @@ def generate_synthetic_intraday(
     if timeframe not in {"5min", "15min", "30min"}:
         raise ValueError("Synthetic generator supports 5min, 15min, and 30min")
     rng = np.random.default_rng(seed)
-    frequency = pd.Timedelta(timeframe)
+    frequency = parse_timeframe_timedelta(timeframe)
     bars_per_day = int(pd.Timedelta(hours=6, minutes=30) / frequency)
     days = pd.bdate_range(start=start, periods=sessions)
     records: list[dict] = []

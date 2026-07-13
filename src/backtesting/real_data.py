@@ -10,6 +10,7 @@ import pandas as pd
 
 from src.indicators import atr, ema
 from src.strategies import Signal
+from src.timeframes import parse_timeframe_timedelta
 
 from .engine import BacktestEngine, BacktestResult
 from .metrics import calculate_metrics
@@ -25,7 +26,7 @@ def invalidate_signals_after_gaps(
     """Mark signals near discontinuities invalid without fabricating candles."""
     if len(frame) < 2 or not signals:
         return signals
-    duration = pd.Timedelta(timeframe)
+    duration = parse_timeframe_timedelta(timeframe)
     gaps = frame.loc[
         frame["timestamp"].diff() > duration,
         "timestamp",

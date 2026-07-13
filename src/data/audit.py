@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.timeframes import parse_timeframe_timedelta
+
 from .loader import normalize_ohlcv, validate_ohlcv
 
 
@@ -89,7 +91,7 @@ def audit_crypto_csv(
         asset_class="crypto",
         timezone="UTC",
     )
-    duration = pd.Timedelta(timeframe)
+    duration = parse_timeframe_timedelta(timeframe)
     incomplete_present = bool(
         not normalized.empty and normalized.iloc[-1]["timestamp"] + duration > now
     )

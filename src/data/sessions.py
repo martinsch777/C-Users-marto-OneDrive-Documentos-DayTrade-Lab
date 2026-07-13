@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from src.timeframes import parse_timeframe_timedelta
+
 
 US_EQUITY_CALENDAR_START = date(1990, 1, 1)
 US_EQUITY_CALENDAR_END = date(2035, 12, 31)
@@ -294,7 +296,7 @@ class EquitySessionCalendar:
         timeframe: str = "1min",
     ) -> pd.DatetimeIndex:
         """Return expected UTC bar opens for all configured equity RTH sessions."""
-        duration = pd.Timedelta(timeframe)
+        duration = parse_timeframe_timedelta(timeframe)
         local_zone = ZoneInfo(self.timezone)
         expected: list[pd.Timestamp] = []
         for session_date in pd.date_range(start_date, end_date, freq="D"):

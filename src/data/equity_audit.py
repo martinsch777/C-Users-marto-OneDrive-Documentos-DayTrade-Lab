@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from src.timeframes import parse_timeframe_timedelta
+
 from .loader import CANONICAL_COLUMNS, TIMESTAMP_ALIASES, _rename_columns
 from .quality_overrides import (
     QualityOverrides,
@@ -404,7 +406,7 @@ def audit_equity_intraday_csv(
     unique = normalized.drop_duplicates(subset=["timestamp"], keep="last").copy()
     unique = unique.reset_index(drop=True)
 
-    duration = pd.Timedelta(timeframe)
+    duration = parse_timeframe_timedelta(timeframe)
     local_times_all = unique["timestamp"].dt.tz_convert(
         ZoneInfo(equity_calendar.timezone)
     )

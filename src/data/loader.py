@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 
+from src.timeframes import parse_timeframe_timedelta
+
 from .sessions import EquitySessionCalendar
 
 
@@ -100,7 +102,7 @@ def normalize_ohlcv(
 
     dropped = False
     if drop_incomplete and not normalized.empty:
-        duration = pd.Timedelta(timeframe)
+        duration = parse_timeframe_timedelta(timeframe)
         now = reference_time or pd.Timestamp.now(tz="UTC")
         if now.tzinfo is None:
             now = now.tz_localize("UTC")
@@ -135,7 +137,7 @@ def _find_missing_bars(
 ) -> list[pd.Timestamp]:
     if len(frame) < 2:
         return []
-    duration = pd.Timedelta(timeframe)
+    duration = parse_timeframe_timedelta(timeframe)
     timestamps = set(frame["timestamp"])
     equity_calendar = calendar or EquitySessionCalendar(timezone=timezone)
     approved_excluded = excluded_session_dates or set()
