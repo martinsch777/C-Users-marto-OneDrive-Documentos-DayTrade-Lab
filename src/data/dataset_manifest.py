@@ -270,32 +270,99 @@ def _validate_explicit_offline_safety_fields(
 
 
 def _path_is_data_raw(path: str | Path) -> bool:
-    source = Path(path)
-    raw_root = Path("data") / "raw"
-    try:
-        source.resolve().relative_to(raw_root.resolve())
-        return True
-    except ValueError:
-        pass
-    parts = [part.lower() for part in source.parts]
+    normalized = str(path).replace("\\", "/")
+    parts = [part.lower() for part in Path(normalized).parts]
     return any(
         left == "data" and right == "raw"
         for left, right in zip(parts, parts[1:])
     )
 
 
+def _canonical_path(path: str | Path) -> str:
+    normalized = str(path).replace("\\", "/")
+    candidate = Path(normalized)
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    resolved = str(candidate.resolve(strict=False)).replace("\\", "/")
+    return resolved.casefold()
+
+
 def _same_manifest_path(expected: str | None, actual: str | Path) -> bool:
     if not expected:
         return False
-    expected_path = Path(str(expected))
-    actual_path = Path(actual)
-    try:
-        return (
-            expected_path == actual_path
-            or expected_path.resolve() == actual_path.resolve()
+    return _canonical_path(expected) == _canonical_path(actual)
+
+
+def _manifest_candidates(
+    symbol: str,
+    timeframe: str,
+    manifest_dir: str | Path,
+) -> list[tuple[Path, dict[str, Any]]]:
+    wanted_symbol = symbol.upper()
+    candidates: list[tuple[Path, dict[str, Any]]] = []
+    for candidate in sorted(Path(manifest_dir).glob(f"{wanted_symbol}_{timeframe}_*_manifest.json")):
+        payload = json.loads(candidate.read_text(encoding="utf-8"))
+        if payload.get("symbol") != wanted_symbol:
+            continue
+        if payload.get("timeframe") != timeframe:
+            continue
+        candidates.append((candidate, payload))
+    return candidates
+
+
+def _matches_curated_or_output(payload: dict[str, Any], csv_path: str | Path) -> bool:
+    return (
+        _same_manifest_path(payload.get("curated_file"), csv_path)
+        or _same_manifest_path(payload.get("output_file"), csv_path)
+    )
+
+
+def _matches_input_file(payload: dict[str, Any], csv_path: str | Path) -> bool:
+    input_file = payload.get("input_file")
+    if _same_manifest_path(input_file, csv_path):
+        return True
+    if not input_file:
+        return False
+    return Path(str(input_file).replace("\\", "/")).name == Path(
+        str(csv_path).replace("\\", "/")
+    ).name
+
+
+def _candidate_summary(candidates: list[tuple[Path, dict[str, Any]]]) -> str:
+    if not candidates:
+        return "none"
+    rows = []
+    for candidate, payload in candidates:
+        rows.append(
+            f"{candidate.name}: curated_file={payload.get('curated_file')!r}, "
+            f"output_file={payload.get('output_file')!r}"
         )
-    except OSError:
-        return expected_path == actual_path
+    return "; ".join(rows)
+
+
+def _validate_approved_manifest_payload(
+    payload: dict[str, Any],
+    candidate: Path,
+    expected_hash: str,
+) -> None:
+    if payload.get("dataset_status") != APPROVED_FOR_OR_FVG_BACKTEST:
+        raise ValueError(
+            f"Dataset manifest is not approved_for_or_fvg_backtest: {candidate}"
+        )
+    if payload.get("audit_apt_for_or_fvg_backtest") is not True:
+        raise ValueError(
+            f"Dataset manifest audit_apt_for_or_fvg_backtest is not true: {candidate}"
+        )
+    if payload.get("audit_critical_warnings") not in ([], None):
+        raise ValueError(
+            f"Dataset manifest has audit_critical_warnings: {candidate}"
+        )
+    if payload.get("sha256") != expected_hash:
+        raise ValueError(
+            f"Dataset manifest sha256 does not match CSV: {candidate}"
+        )
+    if _requires_explicit_offline_safety_validation(payload, candidate):
+        _validate_explicit_offline_safety_fields(payload, candidate)
 
 
 def require_or_fvg_backtest_dataset_manifest(
@@ -307,6 +374,17 @@ def require_or_fvg_backtest_dataset_manifest(
     if _path_is_data_raw(csv_path):
         raise ValueError(
             f"OR/FVG backtests must use curated datasets, not data/raw: {csv_path}"
+        )
+    candidates = _manifest_candidates(symbol, timeframe, manifest_dir)
+    if not [
+        payload
+        for _, payload in candidates
+        if _matches_curated_or_output(payload, csv_path)
+    ]:
+        raise FileNotFoundError(
+            "No OR/FVG approved manifest matched the requested CSV via "
+            f"curated_file or output_file: {csv_path}. "
+            f"Candidates: {_candidate_summary(candidates)}"
         )
     manifest = require_approved_dataset_manifest(
         csv_path,
@@ -338,40 +416,20 @@ def require_approved_dataset_manifest(
 ) -> DatasetManifest:
     source = Path(csv_path)
     expected_hash = sha256_file(source)
-    wanted_symbol = symbol.upper()
-    candidates = sorted(Path(manifest_dir).glob(f"{wanted_symbol}_{timeframe}_*_manifest.json"))
-    for candidate in candidates:
-        payload = json.loads(candidate.read_text(encoding="utf-8"))
-        input_file = Path(str(payload.get("input_file", "")))
-        same_file = (
-            input_file == source
-            or input_file.resolve() == source.resolve()
-            or input_file.name == source.name
-        )
-        if not same_file:
-            continue
-        if payload.get("symbol") != wanted_symbol:
-            continue
-        if payload.get("timeframe") != timeframe:
-            continue
-        if payload.get("dataset_status") != APPROVED_FOR_OR_FVG_BACKTEST:
-            raise ValueError(
-                f"Dataset manifest is not approved_for_or_fvg_backtest: {candidate}"
-            )
-        if payload.get("audit_apt_for_or_fvg_backtest") is not True:
-            raise ValueError(
-                f"Dataset manifest audit_apt_for_or_fvg_backtest is not true: {candidate}"
-            )
-        if payload.get("audit_critical_warnings") not in ([], None):
-            raise ValueError(
-                f"Dataset manifest has audit_critical_warnings: {candidate}"
-            )
-        if payload.get("sha256") != expected_hash:
-            raise ValueError(
-                f"Dataset manifest sha256 does not match CSV: {candidate}"
-            )
-        if _requires_explicit_offline_safety_validation(payload, candidate):
-            _validate_explicit_offline_safety_fields(payload, candidate)
+    candidates = _manifest_candidates(symbol, timeframe, manifest_dir)
+    curated_or_output_matches = [
+        (candidate, payload)
+        for candidate, payload in candidates
+        if _matches_curated_or_output(payload, source)
+    ]
+    input_matches = [
+        (candidate, payload)
+        for candidate, payload in candidates
+        if _matches_input_file(payload, source)
+        and not _matches_curated_or_output(payload, source)
+    ]
+    for candidate, payload in curated_or_output_matches + input_matches:
+        _validate_approved_manifest_payload(payload, candidate, expected_hash)
         return DatasetManifest(**payload)
     raise FileNotFoundError(
         f"No approved dataset manifest found for {source} "

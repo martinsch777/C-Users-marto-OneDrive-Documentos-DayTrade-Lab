@@ -15,6 +15,9 @@ from src.data.dataset_manifest import (
 )
 
 
+DEFAULT_MANIFEST_PATH = object()
+
+
 def write_csv(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -30,12 +33,13 @@ def write_manifest(
     csv_path: Path,
     *,
     symbol: str = "QQQ",
+    name_suffix: str = "curated",
     dataset_status: str = APPROVED_FOR_OR_FVG_BACKTEST,
     audit_apt_for_or_fvg_backtest: bool = True,
     audit_critical_warnings: list[str] | None = None,
     sha256: str | None = None,
-    curated_file: str | None = None,
-    output_file: str | None = None,
+    curated_file: str | None | object = DEFAULT_MANIFEST_PATH,
+    output_file: str | None | object = DEFAULT_MANIFEST_PATH,
     broker_connected: bool = False,
     orders_sent: bool = False,
     live_trading_enabled: bool = False,
@@ -54,7 +58,11 @@ def write_manifest(
         "calendar_loaded": True,
         "calendar_source": "builtin_us_equity_calendar_v1",
         "created_at": "2026-07-10T00:00:00+00:00",
-        "curated_file": str(csv_path) if curated_file is None else curated_file,
+        "curated_file": (
+            str(csv_path)
+            if curated_file is DEFAULT_MANIFEST_PATH
+            else curated_file
+        ),
         "dataset_status": dataset_status,
         "end": "2024-07-01",
         "excluded_sessions": [],
@@ -64,7 +72,11 @@ def write_manifest(
         "last_timestamp": "2024-07-01 09:30:00-04:00",
         "live_trading_enabled": live_trading_enabled,
         "orders_sent": orders_sent,
-        "output_file": str(csv_path) if output_file is None else output_file,
+        "output_file": (
+            str(csv_path)
+            if output_file is DEFAULT_MANIFEST_PATH
+            else output_file
+        ),
         "paper_broker_enabled": paper_broker_enabled,
         "project_safety_state": {
             "broker_connected": False,
@@ -87,9 +99,27 @@ def write_manifest(
         "timeframe": "1min",
         "total_excluded_sessions": 0,
     }
-    path = manifest_dir / f"{symbol}_1min_2024-07-01_2024-07-01_curated_manifest.json"
+    path = manifest_dir / f"{symbol}_1min_2024-07-01_2024-07-01_{name_suffix}_manifest.json"
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     return path
+
+
+def write_raw_manifest(
+    manifest_dir: Path,
+    csv_path: Path,
+    *,
+    symbol: str = "QQQ",
+    sha256: str | None = None,
+) -> Path:
+    return write_manifest(
+        manifest_dir,
+        csv_path,
+        symbol=symbol,
+        name_suffix="alpaca_sip_raw_rth",
+        curated_file=None,
+        output_file=None,
+        sha256=sha256,
+    )
 
 
 class ORFVGBacktestGateTests(unittest.TestCase):
@@ -97,7 +127,7 @@ class ORFVGBacktestGateTests(unittest.TestCase):
         directory = Path(tempfile.mkdtemp())
         csv_path = write_csv(directory / "data" / "curated" / "QQQ_1min.csv")
 
-        with self.assertRaisesRegex(FileNotFoundError, "No approved dataset manifest"):
+        with self.assertRaisesRegex(FileNotFoundError, "curated_file or output_file"):
             require_or_fvg_backtest_dataset_manifest(
                 csv_path,
                 "QQQ",
@@ -149,6 +179,41 @@ class ORFVGBacktestGateTests(unittest.TestCase):
                 manifest_dir=directory / "manifests",
             )
 
+    def test_selects_curated_manifest_when_raw_and_curated_candidates_exist(self):
+        directory = Path(tempfile.mkdtemp())
+        manifest_dir = directory / "manifests"
+        csv_path = write_csv(directory / "data" / "curated" / "QQQ_1min.csv")
+        write_raw_manifest(manifest_dir, csv_path, sha256=sha256_file(csv_path))
+        curated_manifest = write_manifest(manifest_dir, csv_path)
+
+        manifest = require_or_fvg_backtest_dataset_manifest(
+            str(csv_path).replace("/", "\\"),
+            "QQQ",
+            "1min",
+            manifest_dir=manifest_dir,
+        )
+
+        payload = json.loads(curated_manifest.read_text(encoding="utf-8"))
+        self.assertEqual(manifest.curated_file, payload["curated_file"])
+        self.assertEqual(manifest.output_file, payload["output_file"])
+
+    def test_fails_with_candidates_when_only_raw_manifest_exists(self):
+        directory = Path(tempfile.mkdtemp())
+        manifest_dir = directory / "manifests"
+        csv_path = write_csv(directory / "data" / "curated" / "QQQ_1min.csv")
+        write_raw_manifest(manifest_dir, csv_path)
+
+        with self.assertRaisesRegex(
+            FileNotFoundError,
+            "curated_file or output_file.*alpaca_sip_raw_rth",
+        ):
+            require_or_fvg_backtest_dataset_manifest(
+                csv_path,
+                "QQQ",
+                "1min",
+                manifest_dir=manifest_dir,
+            )
+
     def test_fails_when_csv_is_not_manifest_curated_or_output_file(self):
         directory = Path(tempfile.mkdtemp())
         csv_path = write_csv(directory / "data" / "curated" / "QQQ_1min.csv")
@@ -160,7 +225,7 @@ class ORFVGBacktestGateTests(unittest.TestCase):
             output_file=str(other_path),
         )
 
-        with self.assertRaisesRegex(ValueError, "curated_file or output_file"):
+        with self.assertRaisesRegex(FileNotFoundError, "curated_file or output_file"):
             require_or_fvg_backtest_dataset_manifest(
                 csv_path,
                 "QQQ",
