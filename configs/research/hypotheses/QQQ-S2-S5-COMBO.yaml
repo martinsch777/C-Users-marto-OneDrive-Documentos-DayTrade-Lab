@@ -1,0 +1,107 @@
+schema_version: 1
+hypothesis_id: QQQ-S2-S5-COMBO
+name: QQQ S2 Multi-Timeframe Momentum and S5 Opening Range Breakout Retest
+created_at: "2026-07-20T00:00:00+00:00"
+research_phase: preregistered_discovery_first
+asset:
+  symbol: QQQ
+  asset_class: equity
+dataset:
+  timeframe_input: 1min
+  timeframe_operational: 5min
+  timeframe_htf: 60min
+  required_manifest_status: approved_for_or_fvg_backtest
+  required_calendar: US_EQUITY_RTH
+periods:
+  discovery:
+    start: "2022-01-01"
+    end: "2024-12-31"
+  validation:
+    start: "2025-01-01"
+    end: "2025-12-31"
+  holdout:
+    start: "2026-01-01"
+    end: "2026-07-06"
+costs:
+  initial_equity: 10000.0
+  position_notional_fraction: 0.10
+  commission_rate_per_side: 0.0002
+  slippage_ticks_per_execution: 2
+  tick_size: 0.01
+  stress_commission_rate_per_side: 0.0004
+  stress_slippage_ticks_per_execution: 4
+execution:
+  bar_close_signals_only: true
+  entry_model: signal_bar_close
+  htf_model: last_confirmed_60min_bar_only
+  lookahead_allowed: false
+  overnight_positions_allowed: false
+  force_flat_at_session_end: true
+  one_position_at_a_time: true
+daily_controls:
+  max_trades_per_day: 2
+  max_s2_trades_per_day: 1
+  max_s5_trades_per_day: 1
+  cooldown_bars_after_exit: 3
+  max_daily_loss_fraction_of_day_start_equity: 0.005
+  simultaneous_signal_priority: S5
+variants:
+  - S2
+  - S5
+  - S2_S5
+s2_parameters:
+  entry_window: ["09:30", "15:30"]
+  atr_period: 14
+  atr_mean_period: 50
+  atr_relative_min: 0.80
+  atr_relative_max: 2.00
+  volume_mean_period: 20
+  volume_min_multiple: 1.10
+  dmi_period: 14
+  adx_smoothing: 14
+  adx_min: 20.0
+  roc_period: 12
+  roc_ema_period: 5
+  roc_threshold: 0.0025
+  htf_fast_ema: 50
+  htf_slow_ema: 200
+  initial_stop_atr: 1.60
+  trailing_stop_atr: 2.10
+  minimum_momentum_exit_bars: 3
+  maximum_bars_held: 36
+s5_parameters:
+  opening_range: ["09:30", "10:00"]
+  entry_window: ["10:00", "15:55"]
+  atr_period: 14
+  breakout_margin_atr: 0.05
+  retest_tolerance_atr: 0.15
+  max_retest_wait_bars: 12
+  breakout_min_body_atr: 0.25
+  retest_min_body_atr: 0.10
+  volume_mean_period: 20
+  volume_min_multiple: 1.05
+  htf_ema: 100
+  minimum_stop_atr: 1.20
+  trailing_activation_r: 1.0
+  trailing_stop_atr: 2.00
+  structural_invalidation_atr: 0.20
+  maximum_bars_held: 48
+evaluation_criteria:
+  discovery_profit_factor_min: 1.15
+  discovery_min_trades: 100
+  validation_must_not_change_parameters: true
+  holdout_opened_only_after_validation_decision_freeze: true
+  outlier_warning_largest_win_share_gt: 0.25
+  paper_or_live_approval_allowed: false
+safety_flags:
+  live_trading: false
+  broker_connected: false
+  orders_sent: false
+  paper_broker_enabled: false
+restrictions:
+  optimize_parameters: false
+  use_validation_for_parameter_selection: false
+  use_holdout_for_parameter_selection: false
+  force_match_tradingview: false
+  touch_live_modules: false
+  use_external_or_unapproved_data: false
