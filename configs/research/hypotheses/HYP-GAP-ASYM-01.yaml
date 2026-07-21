@@ -1,0 +1,103 @@
+schema_version: 1
+hypothesis_id: HYP-GAP-ASYM-01
+name: Gap-up gap-down intraday asymmetry
+status: PREREGISTERED_RESEARCH_POOL_ONLY
+created_at: "2026-07-21"
+research_question: Does intraday behavior after gap-up sessions differ stably and economically from behavior after gap-down sessions?
+hypothesis_formulation_period:
+  discovery_observed: "2022-01-01 to 2024-12-31"
+  validation_observed: "2025-01-01 to 2025-12-31"
+  note: 2025 was observed during HYP-GAP-03 validation and regime review; it is hypothesis-generation evidence, not clean validation.
+symbols: [QQQ, SPY]
+timeframe_source: 1min
+session: US_EQUITY_RTH
+timezone: America/New_York
+calendar: builtin_us_equity_calendar_v1
+event_definition:
+  previous_session_close: last valid close of previous approved RTH session
+  current_session_open: open of 09:30 America/New_York bar
+  gap_up: current_session_open > previous_session_close
+  gap_down: current_session_open < previous_session_close
+  zero_gap: excluded
+  magnitude_threshold: none
+warmup:
+  atr_sessions: 20
+  includes_current_session: false
+exclusions:
+  - current session excluded by approved data-quality override
+  - previous approved session absent
+  - missing 09:30 open
+  - missing required horizon bar
+  - zero gap
+horizons: [5min, 15min, 30min, 60min, session_close]
+measures:
+  - return from open
+  - return from 09:45 confirmation for comparability with original framework
+  - mean
+  - median
+  - standard deviation
+  - confidence interval
+  - bootstrap by session
+  - positive percentage
+  - MFE
+  - MAE
+  - outliers
+  - annual stability
+  - monthly stability
+  - symbol consistency
+event_outcomes_to_report:
+  - gap continuation
+  - gap reversal
+  - partial gap close
+  - full gap close
+success_criteria:
+  eligible_for_future_validation_only_if:
+    - reasonable event count
+    - sign consistent in more than one year
+    - not dependent on one or two outliers
+    - reasonably similar across QQQ and SPY
+    - gross magnitude could exceed conservative frictions
+    - survives winsorization
+    - does not depend exclusively on one quarter
+    - does not need post-hoc thresholds
+rejection_criteria:
+  - inconsistent sign
+  - weak effect
+  - outlier dependence
+  - symbol instability
+  - gross magnitude below costs
+allowed_classifications:
+  - rechazada
+  - exploratoria_e_insuficiente
+  - elegible_para_futura_validacion
+forbidden_classifications:
+  - validada
+  - aprobada
+  - candidata_a_paper
+  - candidata_a_live
+periods:
+  retrospective_discovery:
+    start: "2022-01-01"
+    end: "2024-12-31"
+    status: research_pool_only_not_independent_validation
+  observed_2025:
+    start: "2025-01-01"
+    end: "2025-12-31"
+    status: previously_observed_hypothesis_generation_evidence
+  holdout_2026:
+    start: "2026-01-01"
+    end: "2026-07-06"
+    status: closed_not_read_not_run
+safety_flags:
+  live_trading: false
+  broker_connected: false
+  orders_sent: false
+  paper_broker_enabled: false
+restrictions:
+  optimize_thresholds: false
+  use_2025_as_clean_validation: false
+  open_2026_holdout: false
+  implement_strategy: false
+  connect_broker: false
+  paper_trade: false
+  select_only_positive_subgroups: false

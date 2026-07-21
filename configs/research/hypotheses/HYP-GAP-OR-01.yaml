@@ -1,0 +1,128 @@
+schema_version: 1
+hypothesis_id: HYP-GAP-OR-01
+name: Gap direction and Opening Range width interaction
+status: PREREGISTERED_RESEARCH_POOL_ONLY
+created_at: "2026-07-21"
+research_question: Does Opening Range width modify post-gap intraday behavior in a stable way?
+hypothesis_formulation_period:
+  discovery_observed: "2022-01-01 to 2024-12-31"
+  validation_observed: "2025-01-01 to 2025-12-31"
+  note: 2025 gap direction and opening-range regimes were observed during HYP-GAP-03 review; 2025 is not clean validation.
+symbols: [QQQ, SPY]
+timeframe_source: 1min
+session: US_EQUITY_RTH
+timezone: America/New_York
+calendar: builtin_us_equity_calendar_v1
+event_definition:
+  previous_session_close: last valid close of previous approved RTH session
+  current_session_open: open of 09:30 America/New_York bar
+  gap_up: current_session_open > previous_session_close
+  gap_down: current_session_open < previous_session_close
+  zero_gap: excluded
+opening_range:
+  start: "09:30"
+  end: "10:00"
+  width: high_low_range_inside_window
+normalization:
+  opening_range_width_atr: opening_range_width / previous_20_session_ATR
+  normalized_gap: abs(current_session_open - previous_session_close) / previous_20_session_ATR
+  also_report_bps: true
+frozen_category_method:
+  source_period: "2022-01-01 to 2024-12-31"
+  source_symbols: [QQQ, SPY]
+  method: terciles_on_feature_distribution_only_before_outcome_review
+  opening_range_categories: [narrow, normal, wide]
+  gap_categories: [small, medium, large]
+  numeric_limits_stored_in_preregistration: true
+frozen_numeric_limits:
+  source: combined_QQQ_SPY_2022_2024_feature_distribution
+  opening_range_width_atr:
+    narrow_max: 0.2762464855308276
+    normal_gt: 0.2762464855308276
+    normal_lt: 0.3822320032431805
+    wide_min: 0.3822320032431805
+  normalized_gap:
+    small_max: 0.1514231963377392
+    medium_gt: 0.1514231963377392
+    medium_lt: 0.3690721649484682
+    large_min: 0.3690721649484682
+analysis_budget:
+  allowed_primary_crosses:
+    - gap_up by opening_range narrow normal wide
+    - gap_down by opening_range narrow normal wide
+  forbidden_primary_crosses:
+    - quarter
+    - day_of_week
+    - volume
+    - volatility
+    - symbol
+    - magnitude
+    - direction beyond allowed gap direction and opening range
+horizons: [5min, 15min, 30min, 60min, session_close]
+measures:
+  - return from open
+  - return from 09:45 confirmation for comparability with original framework
+  - mean
+  - median
+  - standard deviation
+  - confidence interval
+  - bootstrap by session
+  - positive percentage
+  - MFE
+  - MAE
+  - outliers
+  - annual stability
+  - monthly stability
+  - symbol consistency
+success_criteria:
+  eligible_for_future_validation_only_if:
+    - reasonable event count
+    - sign consistent in more than one year
+    - not dependent on one or two outliers
+    - reasonably similar across QQQ and SPY
+    - gross magnitude could exceed conservative frictions
+    - survives winsorization
+    - does not depend exclusively on one quarter
+    - no post-hoc thresholds
+rejection_criteria:
+  - inconsistent sign
+  - weak effect
+  - outlier dependence
+  - no symbol replication
+  - magnitude below costs
+allowed_classifications:
+  - rechazada
+  - exploratoria_e_insuficiente
+  - elegible_para_futura_validacion
+forbidden_classifications:
+  - validada
+  - aprobada
+  - candidata_a_paper
+  - candidata_a_live
+periods:
+  retrospective_discovery:
+    start: "2022-01-01"
+    end: "2024-12-31"
+    status: research_pool_only_not_independent_validation
+  observed_2025:
+    start: "2025-01-01"
+    end: "2025-12-31"
+    status: previously_observed_hypothesis_generation_evidence
+  holdout_2026:
+    start: "2026-01-01"
+    end: "2026-07-06"
+    status: closed_not_read_not_run
+safety_flags:
+  live_trading: false
+  broker_connected: false
+  orders_sent: false
+  paper_broker_enabled: false
+restrictions:
+  optimize_thresholds: false
+  recalculate_limits_outside_research_pool: false
+  use_2025_as_clean_validation: false
+  open_2026_holdout: false
+  implement_strategy: false
+  connect_broker: false
+  paper_trade: false
+  select_only_positive_subgroups: false
