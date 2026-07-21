@@ -105,6 +105,10 @@ class HypGapPreregistration:
     timezone: str
     discovery_start: date
     discovery_end: date
+    validation_start: date
+    validation_end: date
+    final_holdout_start: date
+    final_holdout_end: date
     confirmation_time: time
     horizons: tuple[str, ...]
     variants: tuple[HypGapVariant, ...]
@@ -414,6 +418,10 @@ def load_hyp_gap_preregistration(
         timezone=str(payload["timezone"]),
         discovery_start=_date_from_mapping(discovery, "start"),
         discovery_end=_date_from_mapping(discovery, "end"),
+        validation_start=_date_from_mapping(validation, "start"),
+        validation_end=_date_from_mapping(validation, "end"),
+        final_holdout_start=_date_from_mapping(holdout, "start"),
+        final_holdout_end=_date_from_mapping(holdout, "end"),
         confirmation_time=CONFIRMATION_TIME,
         horizons=tuple(str(item) for item in payload["horizons"]),
         variants=variants,
@@ -833,6 +841,8 @@ def detect_hyp_gap_events(
     start_date: str | date,
     end_date: str | date,
     event_start_date: str | date | None = None,
+    research_phase: str = "discovery",
+    variant_ids: Sequence[str] | None = None,
     calendar: EquitySessionCalendar | None = None,
     excluded_session_dates: set[str] | None = None,
     config_path: str | Path = DEFAULT_HYP_GAP_CONFIG_PATH,
@@ -854,14 +864,36 @@ def detect_hyp_gap_events(
         if event_start_date is not None
         else requested_start
     )
+    phase = str(research_phase)
+    if phase not in {"discovery", "validation"}:
+        raise ValueError("HYP-GAP detection supports only discovery or validation")
     if requested_start < preregistration.discovery_start:
         raise ValueError("HYP-GAP detection request starts before discovery")
-    if requested_end > preregistration.discovery_end:
-        raise ValueError("HYP-GAP detection request must not open validation or holdout")
+    if phase == "discovery" and requested_end > preregistration.discovery_end:
+        raise ValueError("HYP-GAP discovery request must not open validation or holdout")
+    if phase == "validation":
+        if requested_end > preregistration.validation_end:
+            raise ValueError("HYP-GAP validation request must not open final holdout")
+        if effective_event_start < preregistration.validation_start:
+            raise ValueError("HYP-GAP validation events must start inside validation")
+        if requested_end < preregistration.validation_start:
+            raise ValueError("HYP-GAP validation request must include validation")
     if requested_start > requested_end:
         raise ValueError("HYP-GAP detection start_date must be on or before end_date")
     if effective_event_start < requested_start or effective_event_start > requested_end:
         raise ValueError("HYP-GAP event_start_date must be inside the detection range")
+    if variant_ids is None:
+        variants = preregistration.variants
+    else:
+        requested_variant_ids = tuple(str(item) for item in variant_ids)
+        unknown = sorted(set(requested_variant_ids).difference(EXPECTED_VARIANT_IDS))
+        if unknown:
+            raise ValueError("Unknown HYP-GAP variant_id(s): " + ", ".join(unknown))
+        variants = tuple(
+            variant
+            for variant in preregistration.variants
+            if variant.variant_id in set(requested_variant_ids)
+        )
     study_calendar = calendar or EquitySessionCalendar.from_config({"source": "us_equity"})
     if study_calendar.timezone != preregistration.timezone:
         raise ValueError(
@@ -910,7 +942,7 @@ def detect_hyp_gap_events(
             else:
                 eligible_session_keys.add(session_date)
                 variables_by_session.append(variables)
-                for variant in preregistration.variants:
+                for variant in variants:
                     matched, conditions = _evaluate_variant(variant, variables)
                     if not matched:
                         continue

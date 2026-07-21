@@ -22,7 +22,9 @@ from src.research.hypotheses.hyp_gap import (
 )
 
 
-RESEARCH_PHASE = "discovery"
+DISCOVERY_PHASE = "discovery"
+VALIDATION_PHASE = "validation"
+RESEARCH_PHASE = DISCOVERY_PHASE
 SCHEMA_VERSION = 1
 APPROVAL_FLAGS = {
     "results_approved_for_validation": False,
@@ -81,6 +83,7 @@ class HypGapRunRequest:
     output_directory: str
     run_id: str | None = None
     research_phase: str = RESEARCH_PHASE
+    variant_ids: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -107,22 +110,31 @@ def _safe_path(path: str | Path) -> str:
     return str(Path(path))
 
 
-def _ensure_discovery_request(
+def _ensure_research_request(
     request: HypGapRunRequest,
     *,
     discovery_start: date,
     discovery_end: date,
+    validation_start: date,
+    validation_end: date,
 ) -> tuple[date, date]:
-    if request.research_phase != RESEARCH_PHASE:
-        raise ValueError("HYP-GAP runner currently supports only research_phase='discovery'")
+    if request.research_phase not in {DISCOVERY_PHASE, VALIDATION_PHASE}:
+        raise ValueError("HYP-GAP runner supports only discovery or validation")
     start = _date(request.requested_start)
     end = _date(request.requested_end)
     if start > end:
         raise ValueError("requested_start must be on or before requested_end")
     if start < discovery_start:
         raise ValueError("HYP-GAP discovery request starts before discovery")
-    if end > discovery_end:
+    if request.research_phase == DISCOVERY_PHASE and end > discovery_end:
         raise ValueError("HYP-GAP discovery request must not touch validation or holdout")
+    if request.research_phase == VALIDATION_PHASE:
+        if end > validation_end:
+            raise ValueError("HYP-GAP validation request must not touch holdout")
+        if end < validation_start:
+            raise ValueError("HYP-GAP validation request must include validation")
+        if request.variant_ids != ("HYP-GAP-03",):
+            raise ValueError("HYP-GAP validation is frozen to variant_ids=('HYP-GAP-03',)")
     return start, end
 
 
@@ -312,10 +324,12 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def run_hyp_gap_event_study(request: HypGapRunRequest) -> HypGapRunResult:
     preregistration = load_hyp_gap_preregistration(request.preregistration_path)
-    requested_start, requested_end = _ensure_discovery_request(
+    requested_start, requested_end = _ensure_research_request(
         request,
         discovery_start=preregistration.discovery_start,
         discovery_end=preregistration.discovery_end,
+        validation_start=preregistration.validation_start,
+        validation_end=preregistration.validation_end,
     )
     manifest = require_approved_dataset_manifest_file(
         request.dataset_path,
@@ -341,9 +355,14 @@ def run_hyp_gap_event_study(request: HypGapRunRequest) -> HypGapRunResult:
         raise ValueError("HYP-GAP runner dataset failed OHLCV quality validation")
     loaded = _frame_until_end(frame, requested_end, calendar)
     loaded_warmup_start = _first_session_date(loaded, calendar)
+    requested_event_start = (
+        max(requested_start, preregistration.validation_start)
+        if request.research_phase == VALIDATION_PHASE
+        else requested_start
+    )
     effective_event_start, effective_event_end, skipped_excluded_bounds = (
         _effective_event_bounds(
-            requested_start=requested_start,
+            requested_start=requested_event_start,
             requested_end=requested_end,
             present_sessions=_present_session_dates(loaded, calendar),
             excluded_dates=excluded_dates,
@@ -357,6 +376,8 @@ def run_hyp_gap_event_study(request: HypGapRunRequest) -> HypGapRunResult:
         start_date=loaded_warmup_start,
         end_date=effective_event_end,
         event_start_date=effective_event_start,
+        research_phase=request.research_phase,
+        variant_ids=request.variant_ids,
         calendar=calendar,
         excluded_session_dates=excluded_dates,
         config_path=request.preregistration_path,
@@ -439,7 +460,8 @@ def run_hyp_gap_event_study(request: HypGapRunRequest) -> HypGapRunResult:
         "horizons": list(preregistration.horizons),
         "variant_ids": [variant.variant_id for variant in preregistration.variants],
         "total_variants_expected": 6,
-        "total_variants_executed": len(preregistration.variants),
+        "variant_ids_executed": list(request.variant_ids or [variant.variant_id for variant in preregistration.variants]),
+        "total_variants_executed": len(request.variant_ids or preregistration.variants),
         "excluded_sessions": sorted(excluded_dates),
         "event_count": len(detection.events),
         "events_by_variant": detection.summary.events_by_variant,

@@ -148,6 +148,10 @@ class HypGapConfigTests(unittest.TestCase):
         )
         self.assertFalse(config.safety_flags["live_trading"])
         self.assertEqual(config.timeframe, "1min")
+        self.assertEqual(config.validation_start.isoformat(), "2025-01-01")
+        self.assertEqual(config.validation_end.isoformat(), "2025-12-31")
+        self.assertEqual(config.final_holdout_start.isoformat(), "2026-01-01")
+        self.assertEqual(config.final_holdout_end.isoformat(), "2026-07-06")
 
     def test_rejects_missing_variant(self):
         payload = load_payload()
@@ -459,6 +463,38 @@ class HypGapDetectionTests(unittest.TestCase):
         self.assertEqual(set(event_results["availability_status"]), {"available"})
         self.assertFalse(result.summary.safety_flags["paper_broker_enabled"])
         self.assertEqual(result.summary.events_by_symbol["QQQ"], len(result.events))
+
+    def test_validation_phase_is_allowed_only_before_holdout_with_frozen_variant(self):
+        frame = synthetic_frame(event_day="2025-01-02", profile="positive_continuation")
+
+        result = self.detect(
+            frame,
+            start_date="2024-12-02",
+            end_date="2025-01-02",
+            event_start_date="2025-01-02",
+            research_phase="validation",
+            variant_ids=("HYP-GAP-03",),
+        )
+
+        self.assertEqual([event.variant_id for event in result.events], ["HYP-GAP-03"])
+        with self.assertRaisesRegex(ValueError, "holdout"):
+            self.detect(
+                frame,
+                start_date="2024-12-02",
+                end_date="2026-01-02",
+                event_start_date="2025-01-02",
+                research_phase="validation",
+                variant_ids=("HYP-GAP-03",),
+            )
+        with self.assertRaisesRegex(ValueError, "inside validation"):
+            self.detect(
+                frame,
+                start_date="2024-12-02",
+                end_date="2025-01-02",
+                event_start_date="2024-12-31",
+                research_phase="validation",
+                variant_ids=("HYP-GAP-03",),
+            )
 
 
 if __name__ == "__main__":

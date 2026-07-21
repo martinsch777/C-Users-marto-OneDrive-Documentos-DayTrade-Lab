@@ -110,6 +110,7 @@ def request(csv_path: Path, manifest_path: Path, output: Path, **kwargs) -> HypG
         output_directory=str(output),
         run_id=kwargs.pop("run_id", None),
         research_phase=kwargs.pop("research_phase", "discovery"),
+        variant_ids=kwargs.pop("variant_ids", None),
     )
 
 
@@ -230,7 +231,14 @@ class HypGapRunnerTests(unittest.TestCase):
             ({"requested_end": "2026-01-01"}, "validation|holdout"),
             ({"requested_start": "2024-12-31", "requested_end": "2025-01-01"}, "validation|holdout"),
             ({"requested_start": "2024-08-02", "requested_end": "2024-08-01"}, "on or before"),
-            ({"research_phase": "validation"}, "discovery"),
+            (
+                {
+                    "requested_start": "2024-12-02",
+                    "requested_end": "2025-01-02",
+                    "research_phase": "validation",
+                },
+                "frozen",
+            ),
         ]
         for kwargs, message in cases:
             with self.subTest(kwargs=kwargs):
@@ -478,6 +486,55 @@ class HypGapRunnerTests(unittest.TestCase):
 
         for forbidden in ("profit_factor", "sharpe", "sortino", "drawdown", "take_profit", "stop_loss"):
             self.assertNotIn(forbidden, combined.lower())
+
+    def test_validation_runner_is_frozen_to_hyp_gap_03_and_rejects_holdout(self):
+        frame = synthetic_frame(event_day="2025-01-02", profile="positive_continuation")
+        directory, csv_path, manifest, output = self.setup_run(frame=frame)
+
+        result = run_hyp_gap_event_study(
+            request(
+                csv_path,
+                manifest,
+                output,
+                requested_start="2024-12-02",
+                requested_end="2025-01-02",
+                research_phase="validation",
+                variant_ids=("HYP-GAP-03",),
+            )
+        )
+
+        self.assertEqual(result.event_count, 1)
+        events = pd.read_csv(output / "events.csv")
+        self.assertEqual(set(events["variant_id"]), {"HYP-GAP-03"})
+        payload = json.loads((output / "run_manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["research_phase"], "validation")
+        self.assertEqual(payload["variant_ids_executed"], ["HYP-GAP-03"])
+        self.assertEqual(payload["effective_event_start"], "2025-01-02")
+
+        with self.assertRaisesRegex(ValueError, "holdout"):
+            run_hyp_gap_event_study(
+                request(
+                    csv_path,
+                    manifest,
+                    Path(tempfile.mkdtemp()) / "out",
+                    requested_start="2024-12-02",
+                    requested_end="2026-01-02",
+                    research_phase="validation",
+                    variant_ids=("HYP-GAP-03",),
+                )
+            )
+        with self.assertRaisesRegex(ValueError, "frozen"):
+            run_hyp_gap_event_study(
+                request(
+                    csv_path,
+                    manifest,
+                    Path(tempfile.mkdtemp()) / "out",
+                    requested_start="2024-12-02",
+                    requested_end="2025-01-02",
+                    research_phase="validation",
+                    variant_ids=("HYP-GAP-02",),
+                )
+            )
 
 
 if __name__ == "__main__":
