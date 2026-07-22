@@ -396,8 +396,11 @@ def detect_first_candle_signals(
     five_minute: pd.DataFrame,
     symbol: str,
     config: FirstCandleConfig | None = None,
+    *,
+    equity: float | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     config = config or FirstCandleConfig()
+    sizing_equity = config.initial_equity if equity is None else float(equity)
     if config.confirmation_mode != "Solo FVG":
         raise ValueError("HYP-FCR-01 is frozen to confirmation_mode='Solo FVG'")
     data = add_session_columns(five_minute, config)
@@ -493,7 +496,7 @@ def detect_first_candle_signals(
                 )
                 continue
             size = calculate_position_size(
-                equity=config.initial_equity,
+                equity=sizing_equity,
                 signal_close=signal_close,
                 risk_per_unit=float(risk_per_unit),
                 config=config,
