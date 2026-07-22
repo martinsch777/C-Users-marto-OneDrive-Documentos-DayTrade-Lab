@@ -1,0 +1,754 @@
+//@version=6
+strategy(
+     title = "First Candle Rule — OR 30m + FVG/Push",
+     overlay = true,
+     pyramiding = 0,
+     initial_capital = 1000,
+     currency = currency.USD,
+     commission_type = strategy.commission.percent,
+     commission_value = 0.01,
+     slippage = 1,
+     process_orders_on_close = true,
+     calc_on_order_fills = false
+)
+
+//====================================================
+// 1. PARÁMETROS DE SESIÓN
+//====================================================
+
+string groupSession = "1. Sesiones"
+
+string timezoneInput = input.string(
+     "America/New_York",
+     "Zona horaria",
+     group = groupSession
+)
+
+string openingSession = input.session(
+     "0930-1000",
+     "Rango inicial de 30 minutos",
+     group = groupSession
+)
+
+string entrySession = input.session(
+     "1000-1555",
+     "Horario permitido para entradas",
+     group = groupSession
+)
+
+string exitSession = input.session(
+     "1555-1600",
+     "Cierre obligatorio",
+     group = groupSession
+)
+
+bool closeAtEnd = input.bool(
+     true,
+     "Cerrar posición al final de la sesión",
+     group = groupSession
+)
+
+//====================================================
+// 2. REGLAS DE ENTRADA
+//====================================================
+
+string groupEntry = "2. Reglas de entrada"
+
+string tradeDirection = input.string(
+     "Ambos",
+     "Dirección permitida",
+     options = ["Ambos", "Solo largos", "Solo cortos"],
+     group = groupEntry
+)
+
+string confirmationMode = input.string(
+     "Solo FVG",
+     "Tipo de confirmación",
+     options = ["Solo FVG", "FVG o Push"],
+     group = groupEntry
+)
+
+bool requireCloseInside = input.bool(
+     true,
+     "Exigir cierre dentro del rango inicial",
+     group = groupEntry
+)
+
+bool allowSameBarConfirmation = input.bool(
+     false,
+     "Permitir confirmación en la misma vela del barrido",
+     group = groupEntry
+)
+
+int sweepToleranceTicks = input.int(
+     0,
+     "Tolerancia del toque, en ticks",
+     minval = 0,
+     group = groupEntry
+)
+
+int minimumFvgTicks = input.int(
+     0,
+     "Tamaño mínimo del FVG, en ticks",
+     minval = 0,
+     group = groupEntry
+)
+
+int pushBars = input.int(
+     2,
+     "Velas previas para Smart Money Push",
+     minval = 1,
+     maxval = 10,
+     group = groupEntry
+)
+
+bool oneTradePerDay = input.bool(
+     true,
+     "Máximo una operación diaria",
+     group = groupEntry
+)
+
+//====================================================
+// 3. STOP, OBJETIVO Y TAMAÑO
+//====================================================
+
+string groupRisk = "3. Riesgo y posición"
+
+float rewardRisk = input.float(
+     2.0,
+     "Objetivo en múltiplos de R",
+     minval = 0.25,
+     step = 0.25,
+     group = groupRisk
+)
+
+int stopBufferTicks = input.int(
+     1,
+     "Margen adicional del stop, en ticks",
+     minval = 0,
+     group = groupRisk
+)
+
+string sizingMode = input.string(
+     "Riesgo %",
+     "Método de tamaño",
+     options = ["Riesgo %", "Cantidad fija"],
+     group = groupRisk
+)
+
+float riskPercent = input.float(
+     0.50,
+     "Riesgo por operación, % del capital",
+     minval = 0.01,
+     maxval = 10,
+     step = 0.05,
+     group = groupRisk
+)
+
+float fixedQuantity = input.float(
+     1,
+     "Cantidad fija",
+     minval = 0.001,
+     step = 0.001,
+     group = groupRisk
+)
+
+float quantityStep = input.float(
+     1,
+     "Incremento mínimo de cantidad",
+     minval = 0.001,
+     step = 0.001,
+     group = groupRisk
+)
+
+float minimumQuantity = input.float(
+     1,
+     "Cantidad mínima",
+     minval = 0.001,
+     step = 0.001,
+     group = groupRisk
+)
+
+float maxNotionalPercent = input.float(
+     100,
+     "Exposición máxima, % del capital",
+     minval = 0,
+     step = 10,
+     group = groupRisk
+)
+
+//====================================================
+// 4. VISUALIZACIÓN
+//====================================================
+
+string groupVisual = "4. Visualización"
+
+bool showSweepMarkers = input.bool(
+     true,
+     "Mostrar toques del rango",
+     group = groupVisual
+)
+
+bool showEntryMarkers = input.bool(
+     true,
+     "Mostrar confirmaciones",
+     group = groupVisual
+)
+
+//====================================================
+// FUNCIONES AUXILIARES
+//====================================================
+
+f_roundDown(float value, float step) =>
+    step > 0 ? math.floor(value / step) * step : value
+
+f_lowestBody(int count) =>
+    float result = math.min(open, close)
+
+    if count > 1
+        for i = 1 to count - 1
+            result := math.min(
+                 result,
+                 math.min(open[i], close[i])
+            )
+
+    result
+
+f_highestBody(int count) =>
+    float result = math.max(open, close)
+
+    if count > 1
+        for i = 1 to count - 1
+            result := math.max(
+                 result,
+                 math.max(open[i], close[i])
+            )
+
+    result
+
+f_priorBarsBearish(int count) =>
+    bool result = true
+
+    for i = 1 to count
+        result := result and close[i] < open[i]
+
+    result
+
+f_priorBarsBullish(int count) =>
+    bool result = true
+
+    for i = 1 to count
+        result := result and close[i] > open[i]
+
+    result
+
+f_highestPriorBody(int count) =>
+    float result = math.max(open[1], close[1])
+
+    if count > 1
+        for i = 2 to count
+            result := math.max(
+                 result,
+                 math.max(open[i], close[i])
+            )
+
+    result
+
+f_lowestPriorBody(int count) =>
+    float result = math.min(open[1], close[1])
+
+    if count > 1
+        for i = 2 to count
+            result := math.min(
+                 result,
+                 math.min(open[i], close[i])
+            )
+
+    result
+
+//====================================================
+// VALIDACIÓN DEL TIMEFRAME
+//====================================================
+
+bool validTimeframe =
+     timeframe.isminutes and timeframe.multiplier == 5
+
+bgcolor(
+     not validTimeframe
+         ? color.new(color.red, 88)
+         : na,
+     title = "Advertencia: usar gráfico de 5 minutos"
+)
+
+//====================================================
+// DETECCIÓN DE SESIONES
+//====================================================
+
+// 23456 = lunes a viernes.
+string weekdays = ":23456"
+
+bool inOpeningSession = not na(
+     time(
+         timeframe.period,
+         openingSession + weekdays,
+         timezoneInput
+     )
+)
+
+bool inEntrySession = not na(
+     time(
+         timeframe.period,
+         entrySession + weekdays,
+         timezoneInput
+     )
+)
+
+bool inExitSession = not na(
+     time(
+         timeframe.period,
+         exitSession + weekdays,
+         timezoneInput
+     )
+)
+
+bool openingStarts =
+     inOpeningSession and not inOpeningSession[1]
+
+bool openingEnds =
+     not inOpeningSession and inOpeningSession[1]
+
+//====================================================
+// ESTADO DIARIO
+//====================================================
+
+var float openingHigh = na
+var float openingLow = na
+var bool openingReady = false
+
+var bool lowSwept = false
+var bool highSwept = false
+
+var int lowSweepBar = na
+var int highSweepBar = na
+
+var bool tradedToday = false
+
+var float activeStop = na
+var float activeTarget = na
+
+// Reinicio al comenzar cada rango inicial.
+if openingStarts
+    openingHigh := high
+    openingLow := low
+    openingReady := false
+
+    lowSwept := false
+    highSwept := false
+
+    lowSweepBar := na
+    highSweepBar := na
+
+    tradedToday := false
+
+    activeStop := na
+    activeTarget := na
+
+    strategy.cancel_all()
+
+// Construcción del rango de 09:30 a 10:00.
+if inOpeningSession
+    openingHigh := na(openingHigh)
+         ? high
+         : math.max(openingHigh, high)
+
+    openingLow := na(openingLow)
+         ? low
+         : math.min(openingLow, low)
+
+// El rango queda disponible desde las 10:00.
+if openingEnds
+    openingReady := true
+
+//====================================================
+// DETECCIÓN DE TOQUES O BARRIDOS
+//====================================================
+
+float tick = syminfo.mintick
+
+bool canTrackSetup =
+     validTimeframe
+     and openingReady
+     and inEntrySession
+     and not inExitSession
+     and strategy.position_size == 0
+     and (not oneTradePerDay or not tradedToday)
+
+bool lowTouchNow =
+     canTrackSetup
+     and low <= openingLow + sweepToleranceTicks * tick
+
+bool highTouchNow =
+     canTrackSetup
+     and high >= openingHigh - sweepToleranceTicks * tick
+
+if lowTouchNow
+    lowSwept := true
+    lowSweepBar := bar_index
+
+if highTouchNow
+    highSwept := true
+    highSweepBar := bar_index
+
+//====================================================
+// FAIR VALUE GAPS
+//====================================================
+
+// FVG alcista:
+// el mínimo actual está por encima del máximo de hace
+// dos velas.
+float bullishGapSize = low - high[2]
+
+bool bullishFvg =
+     bullishGapSize > 0
+     and bullishGapSize >= minimumFvgTicks * tick
+
+// FVG bajista:
+// el máximo actual está por debajo del mínimo de hace
+// dos velas.
+float bearishGapSize = low[2] - high
+
+bool bearishFvg =
+     bearishGapSize > 0
+     and bearishGapSize >= minimumFvgTicks * tick
+
+//====================================================
+// SMART MONEY PUSH
+//====================================================
+
+// Formalización objetiva:
+//
+// Push alcista:
+// - Las N velas anteriores son bajistas.
+// - La vela actual es alcista.
+// - El cierre supera todos los cuerpos anteriores.
+//
+// Push bajista:
+// - Las N velas anteriores son alcistas.
+// - La vela actual es bajista.
+// - El cierre queda debajo de todos sus cuerpos.
+
+bool bullishPush =
+     close > open
+     and f_priorBarsBearish(pushBars)
+     and close > f_highestPriorBody(pushBars)
+
+bool bearishPush =
+     close < open
+     and f_priorBarsBullish(pushBars)
+     and close < f_lowestPriorBody(pushBars)
+
+//====================================================
+// REGRESO DENTRO DEL RANGO
+//====================================================
+
+bool bullishBackInside =
+     requireCloseInside
+         ? close > openingLow and close < openingHigh
+         : close > openingLow
+
+bool bearishBackInside =
+     requireCloseInside
+         ? close < openingHigh and close > openingLow
+         : close < openingHigh
+
+bool longDelaySatisfied =
+     lowSwept
+     and (
+         allowSameBarConfirmation
+         or (
+             not na(lowSweepBar)
+             and bar_index > lowSweepBar
+         )
+     )
+
+bool shortDelaySatisfied =
+     highSwept
+     and (
+         allowSameBarConfirmation
+         or (
+             not na(highSweepBar)
+             and bar_index > highSweepBar
+         )
+     )
+
+bool usePush =
+     confirmationMode == "FVG o Push"
+
+bool longFvgSetup =
+     longDelaySatisfied
+     and bullishFvg
+     and bullishBackInside
+
+bool shortFvgSetup =
+     shortDelaySatisfied
+     and bearishFvg
+     and bearishBackInside
+
+bool longPushSetup =
+     usePush
+     and longDelaySatisfied
+     and bullishPush
+     and bullishBackInside
+
+bool shortPushSetup =
+     usePush
+     and shortDelaySatisfied
+     and bearishPush
+     and bearishBackInside
+
+bool allowLong =
+     tradeDirection == "Ambos"
+     or tradeDirection == "Solo largos"
+
+bool allowShort =
+     tradeDirection == "Ambos"
+     or tradeDirection == "Solo cortos"
+
+bool longSignal =
+     canTrackSetup
+     and allowLong
+     and (longFvgSetup or longPushSetup)
+
+bool shortSignal =
+     canTrackSetup
+     and allowShort
+     and (shortFvgSetup or shortPushSetup)
+
+//====================================================
+// STOP Y TAMAÑO DE POSICIÓN
+//====================================================
+
+// Si coinciden FVG y Push, se prioriza la formación FVG.
+float longStopCandidate =
+     longFvgSetup
+         ? f_lowestBody(3) - stopBufferTicks * tick
+         : f_lowestBody(pushBars + 1) - stopBufferTicks * tick
+
+float shortStopCandidate =
+     shortFvgSetup
+         ? f_highestBody(3) + stopBufferTicks * tick
+         : f_highestBody(pushBars + 1) + stopBufferTicks * tick
+
+float longRiskPerUnit =
+     close - longStopCandidate
+
+float shortRiskPerUnit =
+     shortStopCandidate - close
+
+float pointValue =
+     syminfo.pointvalue > 0
+         ? syminfo.pointvalue
+         : 1.0
+
+float riskCapital =
+     strategy.equity * riskPercent / 100
+
+float longRiskQuantity =
+     longRiskPerUnit > 0
+         ? riskCapital / (longRiskPerUnit * pointValue)
+         : 0
+
+float shortRiskQuantity =
+     shortRiskPerUnit > 0
+         ? riskCapital / (shortRiskPerUnit * pointValue)
+         : 0
+
+float maximumQuantityByNotional =
+     maxNotionalPercent > 0
+         ? (
+             strategy.equity
+             * maxNotionalPercent
+             / 100
+           )
+           / (close * pointValue)
+         : 1000000000.0
+
+float longRawQuantity =
+     sizingMode == "Cantidad fija"
+         ? fixedQuantity
+         : math.min(
+             longRiskQuantity,
+             maximumQuantityByNotional
+         )
+
+float shortRawQuantity =
+     sizingMode == "Cantidad fija"
+         ? fixedQuantity
+         : math.min(
+             shortRiskQuantity,
+             maximumQuantityByNotional
+         )
+
+float longQuantity =
+     f_roundDown(longRawQuantity, quantityStep)
+
+float shortQuantity =
+     f_roundDown(shortRawQuantity, quantityStep)
+
+bool validLongOrder =
+     longSignal
+     and not shortSignal
+     and longRiskPerUnit > 0
+     and longQuantity >= minimumQuantity
+
+bool validShortOrder =
+     shortSignal
+     and not longSignal
+     and shortRiskPerUnit > 0
+     and shortQuantity >= minimumQuantity
+
+bool longExecuted = false
+bool shortExecuted = false
+
+//====================================================
+// ÓRDENES
+//====================================================
+
+if validLongOrder
+    activeStop := longStopCandidate
+    activeTarget := close + longRiskPerUnit * rewardRisk
+
+    strategy.entry(
+         id = "Long",
+         direction = strategy.long,
+         qty = longQuantity,
+         comment = "First Candle Long"
+    )
+
+    strategy.exit(
+         id = "Long TP-SL",
+         from_entry = "Long",
+         stop = activeStop,
+         limit = activeTarget,
+         comment = "TP o SL"
+    )
+
+    tradedToday := true
+    longExecuted := true
+
+if validShortOrder
+    activeStop := shortStopCandidate
+    activeTarget := close - shortRiskPerUnit * rewardRisk
+
+    strategy.entry(
+         id = "Short",
+         direction = strategy.short,
+         qty = shortQuantity,
+         comment = "First Candle Short"
+    )
+
+    strategy.exit(
+         id = "Short TP-SL",
+         from_entry = "Short",
+         stop = activeStop,
+         limit = activeTarget,
+         comment = "TP o SL"
+    )
+
+    tradedToday := true
+    shortExecuted := true
+
+//====================================================
+// CIERRE DE FIN DE SESIÓN
+//====================================================
+
+if closeAtEnd and inExitSession and strategy.position_size != 0
+    strategy.close_all(
+         comment = "Cierre fin de sesión",
+         immediately = true
+    )
+
+// Limpiar líneas cuando termina una posición.
+if strategy.position_size == 0 and strategy.position_size[1] != 0
+    activeStop := na
+    activeTarget := na
+
+//====================================================
+// GRÁFICOS
+//====================================================
+
+plot(
+     inOpeningSession or openingReady
+         ? openingHigh
+         : na,
+     title = "Máximo primera vela",
+     color = color.new(color.red, 0),
+     linewidth = 2,
+     style = plot.style_linebr
+)
+
+plot(
+     inOpeningSession or openingReady
+         ? openingLow
+         : na,
+     title = "Mínimo primera vela",
+     color = color.new(color.green, 0),
+     linewidth = 2,
+     style = plot.style_linebr
+)
+
+plot(
+     activeStop,
+     title = "Stop activo",
+     color = color.new(color.orange, 0),
+     linewidth = 2,
+     style = plot.style_linebr
+)
+
+plot(
+     activeTarget,
+     title = "Objetivo activo",
+     color = color.new(color.blue, 0),
+     linewidth = 2,
+     style = plot.style_linebr
+)
+
+plotshape(
+     showSweepMarkers and lowTouchNow,
+     title = "Toque del mínimo",
+     style = shape.circle,
+     location = location.belowbar,
+     color = color.new(color.green, 0),
+     size = size.tiny,
+     text = "LQ"
+)
+
+plotshape(
+     showSweepMarkers and highTouchNow,
+     title = "Toque del máximo",
+     style = shape.circle,
+     location = location.abovebar,
+     color = color.new(color.red, 0),
+     size = size.tiny,
+     text = "LQ"
+)
+
+plotshape(
+     showEntryMarkers and longExecuted,
+     title = "Entrada larga",
+     style = shape.triangleup,
+     location = location.belowbar,
+     color = color.new(color.lime, 0),
+     size = size.small,
+     text = "LONG"
+)
+
+plotshape(
+     showEntryMarkers and shortExecuted,
+     title = "Entrada corta",
+     style = shape.triangledown,
+     location = location.abovebar,
+     color = color.new(color.red, 0),
+     size = size.small,
+     text = "SHORT"
+)
