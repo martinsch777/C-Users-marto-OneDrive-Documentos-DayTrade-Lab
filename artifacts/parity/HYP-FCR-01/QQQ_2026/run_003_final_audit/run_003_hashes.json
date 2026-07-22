@@ -1,0 +1,32 @@
+{
+  "outputs": [
+    {
+      "path": "artifacts\\parity\\HYP-FCR-01\\QQQ_2026\\run_003_final_audit\\cost_reconciliation_final.csv",
+      "sha256": "2841e1e6d66cdd3a997f8340214710a8382b063bc71fc5c0bf51583729c893b1"
+    },
+    {
+      "path": "artifacts\\parity\\HYP-FCR-01\\QQQ_2026\\run_003_final_audit\\final_gate_summary.json",
+      "sha256": "a202981972f44e0102f0d419a06be52433c86688ee9eb684e666419e9c650877"
+    },
+    {
+      "path": "artifacts\\parity\\HYP-FCR-01\\QQQ_2026\\run_003_final_audit\\input_hashes.json",
+      "sha256": "bae6b539b7f1436f839c31e3273fa534372ef8b6226e6e9970e161bf44140757"
+    },
+    {
+      "path": "artifacts\\parity\\HYP-FCR-01\\QQQ_2026\\run_003_final_audit\\signal_boundary_fixture_results.csv",
+      "sha256": "8710dbaa850973b02576ec882e7e9c4d84af4bff451fad4310e998bec23769fa"
+    },
+    {
+      "path": "artifacts\\parity\\HYP-FCR-01\\QQQ_2026\\run_003_final_audit\\signal_boundary_fixtures.csv",
+      "sha256": "569b4af69c043e67ceb421a67adae95c8b3bbf016944b0511c3ebfbca427c78a"
+    },
+    {
+      "path": "artifacts\\parity\\HYP-FCR-01\\QQQ_2026\\run_003_final_audit\\signal_boundary_ohlc_diagnostics.csv",
+      "sha256": "8a70d020d89497419aff5292e54101d058b36afca438faa9087010a7353e159a"
+    },
+    {
+      "path": "artifacts\\parity\\HYP-FCR-01\\QQQ_2026\\run_003_final_audit\\timing_reclassification.csv",
+      "sha256": "bd932419ea31c57b91297febf769799c8cc137e580d3b2ddea93150b14a39b86"
+    }
+  ]
+}

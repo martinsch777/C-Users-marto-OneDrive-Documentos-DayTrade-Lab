@@ -1,0 +1,3 @@
+trade_num,session_date,tv_signal_time_ny,python_signal_time_ny,expected_python_signal_time_utc,fixture_observed_signal_time_utc,fixture_signal_matches_expected,diagnostic_count,root_cause,final_classification
+18,2026-05-21,2026-05-21T11:15:00-04:00,2026-05-21T11:45:00-04:00,2026-05-21T15:45:00+00:00,2026-05-21T15:45:00+00:00,True,0,local OHLC fixture reproduces Python timing; no 5-minute label displacement found,DATA_FEED_SIGNAL_BOUNDARY
+28,2026-06-11,2026-06-11T11:00:00-04:00,2026-06-11T10:50:00-04:00,2026-06-11T14:50:00+00:00,2026-06-11T14:50:00+00:00,True,1,local OHLC fixture reproduces Python timing; no 5-minute label displacement found,DATA_FEED_SIGNAL_BOUNDARY

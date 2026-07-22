@@ -1,0 +1,44 @@
+{
+  "inputs": [
+    {
+      "path": "data\\parity\\tradingview\\QQQ_FIRST_CANDLE_2026_PINE_LOGS.txt",
+      "sha256": "9b2d80b37d9f1148ddd745a2ed47facd26d6eefc37f4ac6f1c3155d28db0d0eb"
+    },
+    {
+      "path": "data\\parity\\tradingview\\QQQ_FIRST_CANDLE_2026_TRADES.csv",
+      "sha256": "f643b753fe98b8d421801a421cf02ec963cae7ef8a8d6322a9e9cb29e7d3e1b4"
+    },
+    {
+      "path": "data\\curated\\QQQ_1min_2022-01-01_2026-07-06_curated.csv",
+      "sha256": "2e9fd658e31c698f79bb5bcfcc7077a25e2c7b245d5b5d5f1fc3a158e7931fe4"
+    },
+    {
+      "path": "configs\\research\\hypotheses\\HYP-FCR-01.yaml",
+      "sha256": "da40a9f690117a2d138cd43c5c9f57cd8d04112e52cbd15e0ca5979c0bfa1779"
+    },
+    {
+      "path": "docs\\research\\source_pine\\FIRST_CANDLE_RULE_TV_V1.pine",
+      "sha256": "91604d14b6daa95758af3d97617f3f2278e771a5a30adc61f24e10d83b166d22"
+    },
+    {
+      "path": "artifacts\\parity\\HYP-FCR-01\\QQQ_2026\\run_002_corrected\\comparison_summary.json",
+      "sha256": "2faf5c242a7e6e2f9f92c228b78f620bbfc8d29b51e8cc82637d9433c45f887b"
+    },
+    {
+      "path": "artifacts\\parity\\HYP-FCR-01\\QQQ_2026\\run_002_corrected\\event_matching.csv",
+      "sha256": "a4a4d16285baad5ae686f6b6611bf36478f8945dad6aa9e34bc8fdc1a0b45482"
+    },
+    {
+      "path": "artifacts\\parity\\HYP-FCR-01\\QQQ_2026\\run_002_corrected\\field_mismatches.csv",
+      "sha256": "96751769ba6decf6614d8754eefa662ccb2bf49a9a4b51d0d3969e91e73656ff"
+    },
+    {
+      "path": "artifacts\\parity\\HYP-FCR-01\\QQQ_2026\\run_002_corrected\\python_tradingview_parity_trades.csv",
+      "sha256": "537c39c492d7f0d5c144c116faca51647f92e1506512d27023a1c330d5620465"
+    },
+    {
+      "path": "artifacts\\parity\\HYP-FCR-01\\QQQ_2026\\run_002_corrected\\tradingview_vs_python_comparison.csv",
+      "sha256": "a4a4d16285baad5ae686f6b6611bf36478f8945dad6aa9e34bc8fdc1a0b45482"
+    }
+  ]
+}

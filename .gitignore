@@ -16,3 +16,8 @@ outputs/
 data/synthetic/
 
 data/curated/
+
+# HYP-FCR-01 TradingView parity intermediates
+artifacts/parity/HYP-FCR-01/QQQ_2026/*
+!artifacts/parity/HYP-FCR-01/QQQ_2026/run_003_final_audit/
+!artifacts/parity/HYP-FCR-01/QQQ_2026/run_003_final_audit/**

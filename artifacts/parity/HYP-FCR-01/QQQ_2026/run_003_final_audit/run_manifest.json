@@ -1,0 +1,31 @@
+{
+  "dataset_path": "data\\curated\\QQQ_1min_2022-01-01_2026-07-06_curated.csv",
+  "dataset_sha256": "2e9fd658e31c698f79bb5bcfcc7077a25e2c7b245d5b5d5f1fc3a158e7931fe4",
+  "diagnostics": 0,
+  "discovery_executed": false,
+  "end": "2026-07-06",
+  "execution_mode": "tradingview_parity",
+  "holdout_executed": false,
+  "hypothesis_id": "HYP-FCR-01",
+  "manifest_dir": "data\\manifests",
+  "mode": "parity_debug_2026",
+  "non_decisional": true,
+  "outputs": {
+    "python_diagnostics": "python_tradingview_parity_diagnostics.csv",
+    "python_signals": "python_tradingview_parity_signals.csv",
+    "python_trades": "python_tradingview_parity_trades.csv"
+  },
+  "rows_1min": 22440,
+  "rows_5min": 4488,
+  "safety_flags": {
+    "broker_connected": false,
+    "live_trading": false,
+    "orders_sent": false,
+    "paper_broker_enabled": false
+  },
+  "signals": 40,
+  "start": "2026-04-13",
+  "symbol": "QQQ",
+  "trades": 40,
+  "validation_executed": false
+}

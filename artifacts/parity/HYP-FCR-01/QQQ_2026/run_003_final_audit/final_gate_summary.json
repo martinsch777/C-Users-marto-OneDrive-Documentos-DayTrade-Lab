@@ -1,0 +1,37 @@
+{
+  "canonical_payload_sha256": "bac53f3ff97176b9be5bd5b52a9d6589747587a313b34f24644e1d99bb4cd2ab",
+  "cost_rounding_tolerance": 0.021,
+  "date_direction_matches": 40,
+  "discovery_executed": false,
+  "final_gate_status": "PASS",
+  "holdout_executed": false,
+  "missing_in_python": 0,
+  "missing_in_tradingview": 0,
+  "non_decisional": true,
+  "position_sizing_differences": 0,
+  "python_trades": 40,
+  "remaining_non_blocking_categories": {
+    "COST_ROUNDING_DIFFERENCE": 5,
+    "DATA_FEED_DIFFERENCE": 18,
+    "DATA_FEED_SIGNAL_BOUNDARY": 2,
+    "EXIT_INTRABAR_TIMING": 6
+  },
+  "run": "run_003_final_audit",
+  "safety_flags": {
+    "broker_connected": false,
+    "live_trading": false,
+    "orders_sent": false,
+    "paper_broker_enabled": false
+  },
+  "source_run": "run_002_corrected",
+  "timing_final_classification_counts": {
+    "DATA_FEED_SIGNAL_BOUNDARY": 2,
+    "EXIT_INTRABAR_TIMING": 6
+  },
+  "tradingview_trades": 40,
+  "unexplained_mismatches": 0,
+  "unresolved_costs": 0,
+  "unresolved_signal_logic": 0,
+  "unresolved_true_signal_session_alignment": 0,
+  "validation_executed": false
+}

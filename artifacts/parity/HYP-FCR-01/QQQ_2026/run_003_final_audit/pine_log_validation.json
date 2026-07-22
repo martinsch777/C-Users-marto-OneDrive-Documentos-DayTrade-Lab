@@ -1,0 +1,18 @@
+{
+  "output": "data\\parity\\tradingview\\QQQ_FIRST_CANDLE_2026_TRADES.csv",
+  "validation": {
+    "all_qty_one": true,
+    "duplicate_trade_nums": [],
+    "first_entry_date": "2026-04-13",
+    "last_entry_date": "2026-07-06",
+    "max_trade_num": 39,
+    "min_trade_num": 0,
+    "missing_trade_nums": [],
+    "normalized_symbols": [
+      "QQQ"
+    ],
+    "profit_sum": 13.170000000000002,
+    "session_close_exit_count": 3,
+    "trade_count": 40
+  }
+}
