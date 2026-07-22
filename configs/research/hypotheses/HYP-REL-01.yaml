@@ -1,0 +1,153 @@
+schema_version: 1
+hypothesis_id: HYP-REL-01
+name: QQQ/SPY Intraday Relative Divergence
+status: PREREGISTERED_DISCOVERY
+created_at: "2026-07-21"
+research_question: When QQQ diverges abnormally from SPY intraday, does that relative divergence subsequently revert, continue, or show no stable behavior?
+stage: event_study_preregistration
+symbols:
+  primary: QQQ
+  hedge: SPY
+timeframe:
+  source: 1min
+  research: 5min
+session:
+  calendar: US_EQUITY_RTH
+  timezone: America/New_York
+  regular_hours: "09:30-16:00"
+  include_premarket: false
+  include_after_hours: false
+data_sources:
+  provider: alpaca
+  feed: sip
+  adjustment: raw
+  use_approved_manifests: true
+  apply_approved_exclusions: true
+  approved_exclusions:
+    - symbol: SPY
+      date: "2023-06-05"
+      reason: MISSING_RTH_BARS_FROM_PROVIDER
+periods:
+  discovery:
+    start: "2022-01-01"
+    end: "2024-12-31"
+    status: closed_until_this_preregistered_discovery
+  validation:
+    start: "2025-01-01"
+    end: "2025-12-31"
+    status: eligible_only_if_contamination_audit_and_discovery_gate_pass
+  holdout:
+    start: "2026-01-01"
+    end: "2026-07-06"
+    status: closed_not_read_not_run
+contamination_audit:
+  qqq_spy_spreads_previously_calculated: false
+  qqq_minus_spy_relative_returns_previously_calculated: false
+  intraday_betas_previously_calculated: false
+  divergence_zscores_previously_calculated: false
+  relative_convergence_or_continuation_previously_calculated: false
+  protocol_mentions_cross_confirmation_or_divergence: true
+  validation_2025_classification: validation_elegible_with_documented_conceptual_prior
+returns:
+  formula: log_return
+  rationale: additive across relative legs and horizons
+event_window:
+  enabled_start: "10:00"
+  enabled_end: "15:00"
+  divergence_lookback_minutes: 30
+  divergence_lookback_bars_5min: 6
+beta:
+  model: no_intercept_ols_QQQ_return_on_SPY_return
+  lookback_sessions: 20
+  current_session_included: false
+  minimum_observations: 1000
+standardization:
+  method: same_bar_time_distribution_over_previous_20_sessions
+  current_observation_included: false
+  current_session_included: false
+  minimum_observations: 15
+  statistic: z_score
+event_thresholds:
+  qqq_overperformance: 2.0
+  qqq_underperformance: -2.0
+event_rules:
+  max_overperformance_events_per_session: 1
+  max_underperformance_events_per_session: 1
+  minimum_minutes_between_any_events: 60
+  overlapping_events_allowed: false
+  require_all_causal_inputs: true
+  require_all_horizons_available: true
+horizons:
+  - 5min
+  - 15min
+  - 30min
+  - 60min
+  - session_close
+interpretations_to_report:
+  - mean_reversion
+  - continuation
+metrics:
+  - event_count
+  - events_by_direction
+  - events_by_year
+  - events_by_month
+  - events_by_time_of_day
+  - mean
+  - median
+  - standard_deviation
+  - standard_error
+  - confidence_interval
+  - favorable_rate
+  - percentiles
+  - MFE_relative
+  - MAE_relative
+  - time_to_convergence
+  - outliers
+  - autocorrelation
+  - clustering_temporal
+  - winsorized_1pct
+  - winsorized_5pct
+  - exclude_top_bottom_5
+  - bootstrap_by_session
+economic_relevance:
+  two_leg_trade_assumption: QQQ_and_SPY
+  scenarios:
+    - low
+    - normal
+    - high
+  portfolio_orders_allowed: false
+discovery_gate_for_validation:
+  minimum_events: 150
+  same_sign_in_at_least_two_of_three_years: true
+  mean_and_median_same_sign: true
+  not_dependent_on_five_extreme_events: true
+  stable_between_positive_and_negative_z_events: true
+  winsorized_result_consistent: true
+  gross_magnitude_above_two_leg_costs: true
+  no_lookahead_errors: true
+  not_exclusive_to_single_month_or_quarter: true
+allowed_discovery_classifications:
+  - rechazada
+  - exploratoria_e_insuficiente
+  - candidata_a_validation
+allowed_final_classifications:
+  - rechazada
+  - exploratoria_e_insuficiente
+  - candidata_a_validation
+  - sobrevivio_validation_como_evento_estadistico
+safety_flags:
+  live_trading: false
+  broker_connected: false
+  orders_sent: false
+  paper_broker_enabled: false
+restrictions:
+  optimize_thresholds: false
+  try_multiple_windows: false
+  choose_only_positive_interpretation: false
+  use_2026: false
+  implement_strategy: false
+  create_stops_or_targets: false
+  select_only_favorable_events: false
+  weaken_dataset_gates: false
+  replace_audited_data: false
+  touch_live_modules: false
