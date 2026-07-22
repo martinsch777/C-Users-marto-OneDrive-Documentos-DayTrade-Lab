@@ -492,6 +492,26 @@ def detect_first_candle_signals(
                     }
                 )
                 continue
+            size = calculate_position_size(
+                equity=config.initial_equity,
+                signal_close=signal_close,
+                risk_per_unit=float(risk_per_unit),
+                config=config,
+            )
+            if not size.accepted:
+                diagnostics.append(
+                    {
+                        "symbol": symbol.upper(),
+                        "session_date": session_date,
+                        "timestamp": ts.isoformat(),
+                        "direction": direction,
+                        "diagnostic": size.rejection_reason,
+                        "risk_per_unit": float(risk_per_unit),
+                        "intended_quantity": int(size.intended_quantity),
+                        "actual_quantity": int(size.actual_quantity),
+                    }
+                )
+                continue
             last_sweep_time = low_sweep_time if direction == "long" else high_sweep_time
             last_sweep_position = low_sweep_position if direction == "long" else high_sweep_position
             fvg_size = bull_gap if direction == "long" else bear_gap

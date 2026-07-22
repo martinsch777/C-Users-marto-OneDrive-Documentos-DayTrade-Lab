@@ -245,6 +245,28 @@ class FirstCandleRuleTests(unittest.TestCase):
         signals, _ = detect_first_candle_signals(canonical_5m_day(), "QQQ")
         self.assertEqual(len(signals), 1)
 
+    def test_rejected_quantity_signal_does_not_block_later_valid_order(self):
+        frame = frame5(
+            [
+                ("2024-07-01 09:30", 700.0, 704.0, 699.0, 701.0),
+                ("2024-07-01 09:35", 701.0, 705.0, 700.0, 704.0),
+                ("2024-07-01 09:40", 704.0, 704.5, 700.0, 702.0),
+                ("2024-07-01 09:45", 702.0, 703.0, 697.0, 698.0),
+                ("2024-07-01 09:50", 698.0, 700.0, 696.0, 699.0),
+                ("2024-07-01 09:55", 699.0, 701.0, 695.0, 700.0),
+                ("2024-07-01 10:00", 710.0, 711.0, 700.0, 710.0),
+                ("2024-07-01 10:05", 710.0, 710.0, 706.0, 707.0),
+                ("2024-07-01 10:10", 699.0, 699.0, 699.0, 699.0),
+                ("2024-07-01 10:15", 699.0, 700.0, 696.0, 699.0),
+                ("2024-07-01 10:20", 698.0, 698.0, 696.0, 698.0),
+            ]
+        )
+        signals, diagnostics = detect_first_candle_signals(frame, "QQQ")
+
+        self.assertEqual(len(signals), 1)
+        self.assertEqual(pd.Timestamp(signals.iloc[0]["signal_time"]), ts("2024-07-01 10:20"))
+        self.assertIn("quantity_below_minimum", diagnostics["diagnostic"].tolist())
+
     def test_commission_and_adverse_slippage_long_and_short(self):
         signal = first_signal()
         long_trade = simulate_research_primary_trade(signal, minute_frame(rows=[
