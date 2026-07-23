@@ -1,0 +1,82 @@
+{
+  "inputs": [
+    {
+      "path": "configs\\research\\hypotheses\\HYP-FCR-02.yaml",
+      "sha256": "6d9e263306c4fb2693fbff878ebb8741f04b6d2f44dff297db09da725c42ce79"
+    },
+    {
+      "path": "data\\curated\\QQQ_1min_2022-01-01_2026-07-06_curated.csv",
+      "sha256": "2e9fd658e31c698f79bb5bcfcc7077a25e2c7b245d5b5d5f1fc3a158e7931fe4"
+    },
+    {
+      "path": "data\\curated\\SPY_1min_2022-01-01_2026-07-06_curated.csv",
+      "sha256": "4c28001891013c098a5e1c8050c4a8b539b53756410b6d0502ab4aa18569e787"
+    },
+    {
+      "path": "data\\manifests\\QQQ_1min_2022-01-01_2026-07-06_curated_manifest.json",
+      "sha256": "aa003d83a6d01ed21e8f76e7d6a2f6617a7d97941a7d007e77b56a94ace15e83"
+    },
+    {
+      "path": "data\\manifests\\SPY_1min_2022-01-01_2026-07-06_curated_manifest.json",
+      "sha256": "bd174fbf01cbf609cc900b62f91af6c6ae68905bc7cc90a9b1e3133e8af70a9e"
+    }
+  ],
+  "outputs": [
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\HYP-FCR-02\\run_manifest.json",
+      "sha256": "61b11f0b465d4e2d61ce9894321a8a643fa6043f448aa8f4e91388a5b1844de8"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\HYP-FCR-02\\config_snapshot.yaml",
+      "sha256": "6d9e263306c4fb2693fbff878ebb8741f04b6d2f44dff297db09da725c42ce79"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\HYP-FCR-02\\trades_baseline.csv",
+      "sha256": "6694002e6792f1c96f250c01016ae78cd678a056b2f617c7ed1582223cbe871f"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\HYP-FCR-02\\trades_stress.csv",
+      "sha256": "c28b7f137dce77c3016e7a39563ae90ed754b2e06d7e93ca155405d87bf8f310"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\HYP-FCR-02\\trades_severe.csv",
+      "sha256": "e2e3755e48cebb3ebbd9cf920acd59906fa144b425e8df7c68f01019434e9915"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\HYP-FCR-02\\metrics_summary.json",
+      "sha256": "8ca3363766d0c6f0e1fb7e784aed75429c6a953991c31841d1103d630fa0f171"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\HYP-FCR-02\\metrics_by_symbol.csv",
+      "sha256": "e7d2901d6e21236a9f761f1d23d1cdf7df136d5e8870614aef2401846a8b9945"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\HYP-FCR-02\\metrics_by_year.csv",
+      "sha256": "4425f85c6259c7e08d07b9659cfd1047d432e8a031ac731f2deb522be72278c9"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\HYP-FCR-02\\metrics_by_direction.csv",
+      "sha256": "2a4435cc8e62be32b447569b5b1188dafd36a0b644e66b0d0af457b31c229bda"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\HYP-FCR-02\\metrics_by_hour.csv",
+      "sha256": "b2012b69f349c97bf94305209bca3c1f263d5d56d92ecba09c9e03eaf0782b54"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\HYP-FCR-02\\diagnostic_metrics.json",
+      "sha256": "ef8ec10d70d59e830881a8bbbc71fb94fe18530df293d19a16eb11d0f7204eff"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\HYP-FCR-02\\sizing_rejections.csv",
+      "sha256": "e6d0ab558974866e1a4e75b53aa444d63f7a4b51840075c706c7d888b5690924"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\HYP-FCR-02\\execution_diagnostics.csv",
+      "sha256": "bdc0bdda5829523fa76088225b5649613eded1df2d619d55cb1598f701175c80"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\HYP-FCR-02\\gate_evaluation.json",
+      "sha256": "1650a42bf49527d0d75e05d737c975181fa717872de70cfecd2b8c249a8a8998"
+    }
+  ]
+}

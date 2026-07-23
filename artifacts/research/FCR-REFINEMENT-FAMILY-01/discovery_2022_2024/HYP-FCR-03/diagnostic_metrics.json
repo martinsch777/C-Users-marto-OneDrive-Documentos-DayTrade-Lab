@@ -1,0 +1,7 @@
+{
+  "exact_or_subtick_touches_rejected": 348,
+  "sizing_rejections": 0,
+  "stop_distance_mean": 1.090333268292675,
+  "sweep_depth_ticks_mean": 28.90381463414635,
+  "valid_sweeps_with_trades": 1025
+}

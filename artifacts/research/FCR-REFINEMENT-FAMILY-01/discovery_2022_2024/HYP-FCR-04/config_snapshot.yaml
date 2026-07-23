@@ -1,0 +1,129 @@
+schema_version: 1
+hypothesis_id: HYP-FCR-04
+name: First Candle Rule - Structural Stop Behind Sweep
+family_id: FCR-REFINEMENT-FAMILY-01
+parent_hypothesis: HYP-FCR-01
+origin: post_discovery_refinement
+status: preregistered_not_run
+research_type: intraday_strategy
+created_after_observing_parent_failure: true
+git_commit_at_creation: 0c1fbe55297cf71972554cc8d79ae786014a68d2
+canonical_payload_hash: 1ddd959bc559503be511b6ac1e9b62bd60e8f413b6cfdc3d98ab89cd6682799b
+
+periods:
+  discovery:
+    start: "2022-01-01"
+    end: "2024-12-31"
+    evidence_role: discovery_after_parent_failure
+    independent_evidence: false
+    executable_now: false
+  validation:
+    start: "2025-01-01"
+    end: "2025-12-31"
+    status: closed_unobserved
+    executable_now: false
+    may_open_only_if_selected_by_family_policy: true
+  contaminated_2026:
+    status: observed_contaminated_non_decisional
+    allowed_use: parity_debug_only
+  true_holdout:
+    type: forward_paper_after_validation_and_final_freeze
+    executable_now: false
+
+inherits_from_HYP_FCR_01:
+  data: audited_QQQ_SPY_curated_1min
+  signal_timeframe: 5min
+  timezone: America/New_York
+  opening_range: "09:30-10:00 six five-minute bars"
+  entries: "10:00 through before 15:55"
+  directions: [long, short]
+  max_trades_per_symbol_session: 1
+  pyramiding: 0
+  confirmation_mode: Solo FVG
+  same_bar_confirmation_allowed: false
+  close_strictly_inside_opening_range: true
+  minimum_fvg_ticks: 0
+  target: 2R_from_signal_close
+  risk_percent_of_equity_before_trade: 0.005
+  max_notional_percent_of_equity: 1.0
+  whole_shares_only: true
+  quantity_step: 1
+  minimum_quantity: 1
+  rejected_sizing_signal_consumes_trade: false
+  costs: [baseline, stress, severe]
+  execution_mode: research_primary
+  intrabar_resolution: conservative_1min_stop_first
+  forced_exit: true_session_close
+  overnight_allowed: false
+
+single_concept_change:
+  component: stop_policy
+  stop_policy: structural_from_sweep
+  long: structural_low_from_last_valid_low_sweep_through_signal_inclusive - 1_tick
+  short: structural_high_from_last_valid_high_sweep_through_signal_inclusive + 1_tick
+  target: 2R_from_signal_close_using_structural_risk
+  position_sizing_uses_new_stop_distance: true
+  explicitly_not_used:
+    - ATR
+    - full_opening_range_stop
+    - sweep_bar_only_stop
+    - body_based_stop
+    - trailing_stop
+  justification: >
+    The original three-body stop can sit inside the structure that produced
+    the sweep. The structural stop protects the full extreme formed from
+    sweep through confirmation.
+
+individual_discovery_gate:
+  all_required: true
+  minimum_completed_trades_pooled: 150
+  minimum_completed_trades_QQQ: 50
+  minimum_completed_trades_SPY: 50
+  baseline_net_expectancy_R_gt: 0
+  baseline_profit_factor_net_gte: 1.15
+  baseline_QQQ_net_positive: true
+  baseline_SPY_net_positive: true
+  stress_net_expectancy_R_gte: 0
+  stress_profit_factor_net_gte: 1.00
+  minimum_positive_discovery_years: 2
+  max_single_year_profit_share: 0.70
+  maximum_drawdown_lte: 0.10
+
+diagnostics_preregistered:
+  common:
+    - trades
+    - net_pnl
+    - expectancy_R
+    - profit_factor
+    - drawdown
+    - win_rate
+    - by_symbol
+    - by_year
+    - by_direction
+    - by_hour
+    - sweep_confirmation_time
+    - fvg_ticks
+    - fvg_atr
+    - stop_distance
+    - effective_risk
+    - sizing_rejections
+    - exits_tp_sl_session_close
+  variant_specific:
+    - original_body_stop_vs_structural_stop_distance
+    - additional_sizing_rejections
+    - sweep_to_signal_duration
+    - structural_segment_length
+  diagnostic_metrics_cannot_create_filters_same_run: true
+
+post_first_batch_lock:
+  prohibit_parameter_changes: true
+  prohibit_adding_variants: true
+  prohibit_parameter_sweeps: true
+
+safety:
+  live_trading: false
+  broker_connected: false
+  orders_sent: false
+  paper_broker_enabled: false
+  broker_apis_allowed: false
+  downloads_allowed: false

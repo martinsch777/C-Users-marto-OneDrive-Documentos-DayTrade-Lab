@@ -1,0 +1,107 @@
+{
+  "criteria": [
+    {
+      "actual": 1025,
+      "criterion": "completed_trades_pooled",
+      "expected": ">= 150",
+      "explanation": "Pooled completed discovery trades.",
+      "pass": true
+    },
+    {
+      "actual": 518,
+      "criterion": "qqq_completed_trades",
+      "expected": ">= 50",
+      "explanation": "QQQ completed discovery trades.",
+      "pass": true
+    },
+    {
+      "actual": 507,
+      "criterion": "spy_completed_trades",
+      "expected": ">= 50",
+      "explanation": "SPY completed discovery trades.",
+      "pass": true
+    },
+    {
+      "actual": -0.15243686434196949,
+      "criterion": "baseline_net_expectancy_R",
+      "expected": "> 0",
+      "explanation": "Baseline expectancy must be positive.",
+      "pass": false
+    },
+    {
+      "actual": 0.9013763830981315,
+      "criterion": "baseline_profit_factor_net",
+      "expected": ">= 1.15",
+      "explanation": "Baseline profit factor must clear preregistered threshold.",
+      "pass": false
+    },
+    {
+      "actual": -60.40616611997865,
+      "criterion": "qqq_baseline_net_pnl",
+      "expected": "> 0",
+      "explanation": "QQQ must be net positive under baseline.",
+      "pass": false
+    },
+    {
+      "actual": -76.4166518399851,
+      "criterion": "spy_baseline_net_pnl",
+      "expected": "> 0",
+      "explanation": "SPY must be net positive under baseline.",
+      "pass": false
+    },
+    {
+      "actual": -0.2820776992514909,
+      "criterion": "stress_net_expectancy_R",
+      "expected": ">= 0",
+      "explanation": "Stress expectancy must be non-negative.",
+      "pass": false
+    },
+    {
+      "actual": 0.7952718896605033,
+      "criterion": "stress_profit_factor_net",
+      "expected": ">= 1.00",
+      "explanation": "Stress profit factor must be at least breakeven.",
+      "pass": false
+    },
+    {
+      "actual": {
+        "positive_years": 0,
+        "year_net_pnl": {
+          "2022": -12.357034239985353,
+          "2023": -36.476764699987456,
+          "2024": -87.9890190199909
+        }
+      },
+      "criterion": "positive_discovery_years",
+      "expected": ">= 2",
+      "explanation": "At least two discovery years must be positive.",
+      "pass": false
+    },
+    {
+      "actual": {
+        "max_year_share": null,
+        "reason": "pooled_baseline_total_net_pnl_lte_0",
+        "total_net_pnl": -136.8228179599637,
+        "year_contributions": {
+          "2022": null,
+          "2023": null,
+          "2024": null
+        }
+      },
+      "criterion": "max_single_year_profit_share",
+      "expected": "<= 70% and total > 0",
+      "explanation": "If total baseline PnL is not positive, concentration fails automatically.",
+      "pass": false
+    },
+    {
+      "actual": 0.12757525831994895,
+      "criterion": "baseline_maximum_drawdown",
+      "expected": "<= 10%",
+      "explanation": "Baseline drawdown cap.",
+      "pass": false
+    }
+  ],
+  "status": "discovery_failed",
+  "validation_2025_eligible": false,
+  "validation_2025_unlocked": false
+}

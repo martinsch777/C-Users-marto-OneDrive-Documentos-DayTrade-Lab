@@ -1,0 +1,4 @@
+hypothesis_id,symbol,scenario,session_date,timestamp,direction,diagnostic,equity_before_session,actual_quantity
+HYP-FCR-04,QQQ,baseline,2023-11-24,2023-11-24T17:55:00+00:00,long,no_next_minute_entry,1021.6031958100145,2
+HYP-FCR-04,QQQ,stress,2023-11-24,2023-11-24T17:55:00+00:00,long,no_next_minute_entry,953.8136675000275,2
+HYP-FCR-04,QQQ,severe,2023-11-24,2023-11-24T17:55:00+00:00,long,no_next_minute_entry,876.5967701400416,2

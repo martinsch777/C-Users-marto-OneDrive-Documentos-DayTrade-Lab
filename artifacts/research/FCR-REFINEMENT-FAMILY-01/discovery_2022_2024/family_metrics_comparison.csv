@@ -1,0 +1,4 @@
+hypothesis_id,status,gate_passed,baseline_completed_trades,baseline_total_net_pnl,baseline_net_expectancy_R,baseline_profit_factor_net,baseline_maximum_drawdown,stress_net_expectancy_R,stress_profit_factor_net,severe_net_expectancy_R,severe_profit_factor_net,family_selection_status,validation_2025_eligible
+HYP-FCR-02,discovery_failed,False,973,-82.0173072399657,-0.13094769832725803,0.9376879952421632,0.11563494020480672,-0.25943348214179324,0.8170311419252354,-0.3879192659563284,0.7146222235197185,discovery_failed,False
+HYP-FCR-03,discovery_failed,False,1025,-136.8228179599637,-0.15243686434196949,0.9013763830981315,0.12757525831994895,-0.2820776992514909,0.7952718896605033,-0.41171853416101234,0.6927622790253875,discovery_failed,False
+HYP-FCR-04,discovery_failed,False,1025,-70.37606215996564,-0.10215820332573188,0.9518808139957496,0.0990557183927407,-0.2214301549064427,0.8328725620953438,-0.34070210648715354,0.7330274431818685,discovery_failed,False

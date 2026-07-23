@@ -1,0 +1,10 @@
+{
+  "family_status": "discovery_failed",
+  "selected_hypothesis_id": null,
+  "validation_2025_unlocked": false,
+  "variant_statuses": {
+    "HYP-FCR-02": "discovery_failed",
+    "HYP-FCR-03": "discovery_failed",
+    "HYP-FCR-04": "discovery_failed"
+  }
+}

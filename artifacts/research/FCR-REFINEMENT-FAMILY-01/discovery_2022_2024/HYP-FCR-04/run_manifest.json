@@ -1,0 +1,36 @@
+{
+  "canonical_payload_hash": "1ddd959bc559503be511b6ac1e9b62bd60e8f413b6cfdc3d98ab89cd6682799b",
+  "created_at_utc": "2026-07-23T01:45:49.706037+00:00",
+  "dataset_snapshot_ref": "../dataset_manifest_snapshot.json",
+  "execution_mode": "research_primary",
+  "family_id": "FCR-REFINEMENT-FAMILY-01",
+  "holdout_executed": false,
+  "hypothesis_id": "HYP-FCR-04",
+  "live_eligible": false,
+  "optimization_executed": false,
+  "paper_eligible": false,
+  "parameter_sweep_executed": false,
+  "parity_2026_executed": false,
+  "period": "discovery",
+  "pre_run_commit": "135c3e67cf5d74d99da3bed53be2e1543d22aca0",
+  "requested_end": "2024-12-31",
+  "requested_start": "2022-01-01",
+  "safety_flags": {
+    "broker_connected": false,
+    "live_trading": false,
+    "orders_sent": false,
+    "paper_broker_enabled": false
+  },
+  "scenarios": [
+    "baseline",
+    "stress",
+    "severe"
+  ],
+  "status": "discovery_failed",
+  "symbols": [
+    "QQQ",
+    "SPY"
+  ],
+  "validation_2025_eligible": false,
+  "validation_executed": false
+}

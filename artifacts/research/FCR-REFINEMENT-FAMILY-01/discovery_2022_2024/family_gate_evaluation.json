@@ -1,0 +1,59 @@
+{
+  "batch_status": "completed",
+  "completed_variants_before_selection": [
+    "HYP-FCR-02",
+    "HYP-FCR-03",
+    "HYP-FCR-04"
+  ],
+  "family_id": "FCR-REFINEMENT-FAMILY-01",
+  "individual_results": [
+    {
+      "baseline_completed_trades": 973,
+      "baseline_maximum_drawdown": 0.11563494020480672,
+      "baseline_net_expectancy_R": -0.13094769832725803,
+      "baseline_profit_factor_net": 0.9376879952421632,
+      "baseline_total_net_pnl": -82.0173072399657,
+      "family_selection_status": "discovery_failed",
+      "gate_passed": false,
+      "hypothesis_id": "HYP-FCR-02",
+      "severe_net_expectancy_R": -0.3879192659563284,
+      "severe_profit_factor_net": 0.7146222235197185,
+      "status": "discovery_failed",
+      "stress_net_expectancy_R": -0.25943348214179324,
+      "stress_profit_factor_net": 0.8170311419252354,
+      "validation_2025_eligible": false
+    },
+    {
+      "baseline_completed_trades": 1025,
+      "baseline_maximum_drawdown": 0.12757525831994895,
+      "baseline_net_expectancy_R": -0.15243686434196949,
+      "baseline_profit_factor_net": 0.9013763830981315,
+      "baseline_total_net_pnl": -136.8228179599637,
+      "family_selection_status": "discovery_failed",
+      "gate_passed": false,
+      "hypothesis_id": "HYP-FCR-03",
+      "severe_net_expectancy_R": -0.41171853416101234,
+      "severe_profit_factor_net": 0.6927622790253875,
+      "status": "discovery_failed",
+      "stress_net_expectancy_R": -0.2820776992514909,
+      "stress_profit_factor_net": 0.7952718896605033,
+      "validation_2025_eligible": false
+    },
+    {
+      "baseline_completed_trades": 1025,
+      "baseline_maximum_drawdown": 0.0990557183927407,
+      "baseline_net_expectancy_R": -0.10215820332573188,
+      "baseline_profit_factor_net": 0.9518808139957496,
+      "baseline_total_net_pnl": -70.37606215996564,
+      "family_selection_status": "discovery_failed",
+      "gate_passed": false,
+      "hypothesis_id": "HYP-FCR-04",
+      "severe_net_expectancy_R": -0.34070210648715354,
+      "severe_profit_factor_net": 0.7330274431818685,
+      "status": "discovery_failed",
+      "stress_net_expectancy_R": -0.2214301549064427,
+      "stress_profit_factor_net": 0.8328725620953438,
+      "validation_2025_eligible": false
+    }
+  ]
+}

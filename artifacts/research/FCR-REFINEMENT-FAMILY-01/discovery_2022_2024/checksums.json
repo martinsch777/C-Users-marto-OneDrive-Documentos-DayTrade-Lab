@@ -1,0 +1,46 @@
+{
+  "inputs": [
+    {
+      "path": "configs\\research\\hypotheses\\FCR-REFINEMENT-FAMILY-01.yaml",
+      "sha256": "dc898f1ec329c683f484214c6bcee634ad044964827c794a3ca2a4b5478a7532"
+    },
+    {
+      "path": "configs\\research\\hypotheses\\HYP-FCR-02.yaml",
+      "sha256": "6d9e263306c4fb2693fbff878ebb8741f04b6d2f44dff297db09da725c42ce79"
+    },
+    {
+      "path": "configs\\research\\hypotheses\\HYP-FCR-03.yaml",
+      "sha256": "e87a5c88d6506e2c1056a69b2effdd2b9a1113bb746d3c39280d7cd53417b792"
+    },
+    {
+      "path": "configs\\research\\hypotheses\\HYP-FCR-04.yaml",
+      "sha256": "ee51e4e645b21d2072696a1af0eee9b572bd185bd784deb96a4b58a5043cfa52"
+    }
+  ],
+  "outputs": [
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\family_run_manifest.json",
+      "sha256": "71de8805fd78722077a5d031a9de780bbbdebbdf748c281757be3e2f36bc6e5d"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\family_config_snapshot.yaml",
+      "sha256": "dc898f1ec329c683f484214c6bcee634ad044964827c794a3ca2a4b5478a7532"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\family_gate_evaluation.json",
+      "sha256": "54d9d1a6057722867bd2f40a7981f335dae9e3baf7700d743350a9a20fa1f333"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\family_selection_result.json",
+      "sha256": "73a1902bc9e910d78f64b0937fec784a961c402b4e9e4abe19f75db32fe150e8"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\family_metrics_comparison.csv",
+      "sha256": "cc2f8d1154c9cbee50308e6f7e61dbf307617a57828f9828f86c1c41f8237ff7"
+    },
+    {
+      "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\dataset_manifest_snapshot.json",
+      "sha256": "f7e436c52d6891c7f434db7babdca765d48694c7f9eb738374bfd33e0bde0036"
+    }
+  ]
+}

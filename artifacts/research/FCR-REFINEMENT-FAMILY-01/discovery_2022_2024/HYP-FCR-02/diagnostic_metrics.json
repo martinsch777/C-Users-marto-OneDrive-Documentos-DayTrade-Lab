@@ -1,0 +1,11 @@
+{
+  "expired_sweeps": 1077,
+  "offset_4_plus_rejections": 1077,
+  "sizing_rejections": 0,
+  "stop_distance_mean": 1.104949023638224,
+  "trades_by_confirmation_offset": {
+    "1": 663,
+    "2": 250,
+    "3": 60
+  }
+}
