@@ -138,6 +138,16 @@ Final classification: discovery_failed.
 
 Validation 2025 remains locked and was not executed.
 
+Formal final state:
+
+- status: discovery_failed
+- validation_2025_unlocked: false
+- validation_executed: false
+- holdout_executed: false
+- paper_eligible: false
+- live_eligible: false
+- closed_for_parameter_changes: true
+
 ## Artifacts
 
 Folder:

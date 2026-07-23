@@ -1,0 +1,77 @@
+{
+  "canonical_payload_sha256": "bac53f3ff97176b9be5bd5b52a9d6589747587a313b34f24644e1d99bb4cd2ab",
+  "config_path": "configs\\research\\hypotheses\\HYP-FCR-01.yaml",
+  "created_at_utc": "2026-07-22T21:31:03.573021+00:00",
+  "execution_mode": "research_primary",
+  "holdout_executed": false,
+  "hypothesis_id": "HYP-FCR-01",
+  "optimization_executed": false,
+  "parameter_sweep_executed": false,
+  "paper_eligible": false,
+  "parity_2026_executed": false,
+  "period": "discovery",
+  "period_rows": {
+    "QQQ": {
+      "bars_5m": 58482,
+      "effective_end": "2024-12-31",
+      "effective_start": "2022-01-03",
+      "excluded_sessions": [],
+      "requested_end": "2024-12-31",
+      "requested_start": "2022-01-01",
+      "rows_1m": 292410,
+      "session_count": 753
+    },
+    "SPY": {
+      "bars_5m": 58404,
+      "effective_end": "2024-12-31",
+      "effective_start": "2022-01-03",
+      "excluded_sessions": [
+        {
+          "bars_removed": 386,
+          "created_by": "data_quality_audit",
+          "date": "2023-06-05",
+          "expected_bars": 390,
+          "missing_timestamps": [
+            "2023-06-05 09:52:00-04:00",
+            "2023-06-05 09:53:00-04:00",
+            "2023-06-05 09:54:00-04:00",
+            "2023-06-05 09:55:00-04:00"
+          ],
+          "policy": "exclude_entire_session",
+          "reason": "MISSING_RTH_BARS_FROM_PROVIDER",
+          "source": "alpaca_sip_raw_rth",
+          "symbol": "SPY"
+        }
+      ],
+      "requested_end": "2024-12-31",
+      "requested_start": "2022-01-01",
+      "rows_1m": 292020,
+      "session_count": 752
+    }
+  },
+  "pine_path": "docs\\research\\source_pine\\FIRST_CANDLE_RULE_TV_V1.pine",
+  "pine_sha256": "91604d14b6daa95758af3d97617f3f2278e771a5a30adc61f24e10d83b166d22",
+  "requested_end": "2024-12-31",
+  "requested_start": "2022-01-01",
+  "safety_flags": {
+    "broker_connected": false,
+    "live_trading": false,
+    "orders_sent": false,
+    "paper_broker_enabled": false
+  },
+  "scenarios": [
+    "baseline",
+    "stress",
+    "severe"
+  ],
+  "status": "discovery_failed",
+  "symbols": [
+    "QQQ",
+    "SPY"
+  ],
+  "closed_for_parameter_changes": true,
+  "validation_2025_eligible": false,
+  "validation_2025_unlocked": false,
+  "live_eligible": false,
+  "validation_executed": false
+}

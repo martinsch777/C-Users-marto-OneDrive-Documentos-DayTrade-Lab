@@ -1,0 +1,300 @@
+schema_version: 1
+hypothesis_id: HYP-FCR-01
+name: First Candle Rule - Opening Range 30m + FVG Reentry
+status: preregistered_not_run
+research_type: intraday_strategy
+source_version: FIRST_CANDLE_RULE_TV_V1
+created_at: "2026-07-21T23:17:53-03:00"
+python_version: "Python 3.13.2"
+git_commit_at_preregistration: c86e1f48932222d2fab74875e3c0923ff9f8e1d0
+
+source_pine:
+  path: docs/research/source_pine/FIRST_CANDLE_RULE_TV_V1.pine
+  sha256: 91604D14B6DAA95758AF3D97617F3F2278E771A5A30ADC61F24E10D83B166D22
+  immutable: true
+  do_not_modify_source: true
+
+configuration_hash:
+  method: sha256_of_canonical_yaml_payload_excluding_configuration_hash
+  sha256: bac53f3ff97176b9be5bd5b52a9d6589747587a313b34f24644e1d99bb4cd2ab
+  full_file_sha256_note: The full file SHA-256 is reported in docs/HYP_FIRST_CANDLE_PREREGISTRATION.md after materialization.
+
+research_question:
+  alternative_hypothesis: >
+    After price touches one extreme of the 09:30-10:00 opening range, a contrary
+    FVG confirmed by a strict close back inside the range has positive net
+    expectancy using a 2R target.
+  null_hypothesis: >
+    Net expectancy is less than or equal to zero after commissions, slippage,
+    and conservative intrabar resolution.
+
+periods:
+  discovery:
+    start: "2022-01-01"
+    end: "2024-12-31"
+    executable_now: false
+  validation:
+    start: "2025-01-01"
+    end: "2025-12-31"
+    blocked_until_discovery_gate_passes: true
+    executable_now: false
+  holdout_2026:
+    status: observed_contaminated_non_decisional
+    reason: TradingView results were already observed during 2026 for QQQ, VOO, SMH, and SOXL.
+    allowed_future_use: parity_debug_only
+    prohibited_use:
+      - profitability_conclusion
+      - parameter_selection
+      - strategy_approval
+  true_holdout:
+    type: forward_paper_after_final_freeze
+    executable_now: false
+
+universe:
+  primary_initial:
+    - QQQ
+    - SPY
+  data_source:
+    timeframe: 1min
+    required_manifest_status: approved_for_or_fvg_backtest
+    required_adjustment: raw
+    required_feed: sip
+    rth_only: true
+    use_curated_datasets_only: true
+    expected_manifests:
+      QQQ: data/manifests/QQQ_1min_2022-01-01_2026-07-06_curated_manifest.json
+      SPY: data/manifests/SPY_1min_2022-01-01_2026-07-06_curated_manifest.json
+  respect:
+    - manifest_excluded_sessions
+    - holidays
+    - dst
+    - early_closes
+    - manifest_warnings
+  not_downloaded_or_run_now:
+    - VOO
+    - SMH
+    - SOXL
+  future_transfer_reference:
+    hypothesis_id: HYP-FCR-XFER-01
+    create_now: false
+    execute_now: false
+
+signal_rules:
+  source_timeframe: 1min
+  signal_timeframe: 5min
+  resampling:
+    timezone: America/New_York
+    bar_opens: ["09:30", "09:35", "09:40", "...", "15:55"]
+    source: audited_1min_only
+  opening_range:
+    start: "09:30"
+    end_exclusive: "10:00"
+    required_bars: 6
+    high: max_high_over_six_bars
+    low: min_low_over_six_bars
+    available_from: "10:00"
+  entries:
+    start: "10:00"
+    end_exclusive: "15:55"
+    max_trades_per_symbol_session: 1
+    long_enabled: true
+    short_enabled: true
+    pyramiding: 0
+  sweep:
+    long_touch: low <= opening_low
+    short_touch: high >= opening_high
+    tolerance_ticks: 0
+    strict_break_required: false
+    exact_touch_counts: true
+    most_recent_touch_updates: true
+    confirmation_must_be_after_most_recent_touch: true
+    same_bar_confirmation_allowed: false
+  fvg:
+    mode: Solo FVG
+    smart_money_push_enabled: false
+    bullish: low[t] > high[t-2]
+    bearish: high[t] < low[t-2]
+    minimum_fvg_ticks: 0
+    strict_positive_gap_required: true
+  back_inside_opening_range:
+    long: close > opening_low and close < opening_high
+    short: close < opening_high and close > opening_low
+    strict_inequalities: true
+    close_on_edge_counts: false
+  simultaneous_signals:
+    if_long_and_short_same_bar: no_trade
+    record_diagnostic: true
+
+risk:
+  initial_capital_parity_usd: 1000
+  reward_risk: 2.0
+  risk_percent_of_equity_before_trade: 0.005
+  max_notional_percent_of_equity: 1.0
+  quantity_step: 1
+  minimum_quantity: 1
+  pointvalue_equivalent: 1
+  position_sizing:
+    - risk_capital = equity * 0.005
+    - risk_quantity = risk_capital / risk_per_unit
+    - maximum_quantity_by_notional = equity / price
+    - raw_quantity = min(risk_quantity, maximum_quantity_by_notional)
+    - quantity = floor(raw_quantity)
+    - reject_if_quantity_less_than_1
+  stop:
+    long: min(min(open, close) over signal bar and two prior bars) - 1 tick
+    short: max(max(open, close) over signal bar and two prior bars) + 1 tick
+    use_full_high_low: false
+    use_original_opening_range_extreme: false
+    move_after_entry: false
+  target:
+    long: signal_close + 2 * (signal_close - stop)
+    short: signal_close - 2 * (stop - signal_close)
+    frozen_from_signal_close: true
+    recalculate_after_real_fill: false
+
+costs:
+  tick_size: 0.01
+  baseline:
+    commission_rate_per_side: 0.0001
+    slippage_ticks_per_execution: 1
+  stress:
+    commission_rate_per_side: 0.0002
+    slippage_ticks_per_execution: 2
+  severe:
+    commission_rate_per_side: 0.0003
+    slippage_ticks_per_execution: 3
+
+execution_modes:
+  tradingview_parity:
+    purpose: operation_by_operation_comparison_with_pine_not_economic_approval
+    decision_time: signal_bar_close
+    entry_reference: signal_close
+    apply_adverse_slippage: true
+    stop_and_target_from: signal_close
+    quantity: integer_shares
+    fixed_close_logic: Pine 15:55-16:00 exitSession
+    early_close_source_semantics_preserved: true
+    correct_early_close_bug: false
+  research_primary:
+    purpose: only_mode_eligible_for_economic_conclusions
+    signal_known_at: five_minute_bar_close
+    entry: next_available_one_minute_open
+    apply_adverse_slippage: true
+    stop_and_target_from: signal_close
+    intrabar_data: audited_1min
+    same_minute_tp_sl_policy: stop_first
+    gap_through_stop: fill_worst_of_stop_or_open_plus_adverse_slippage
+    gap_through_target: fill_target_without_price_improvement
+    forced_exit: true_session_close_from_US_EQUITY_RTH
+    overnight_allowed: false
+    early_close_exit: effective_session_close
+    fixed_1555_close_used: false
+
+primary_metrics:
+  - net_expectancy_R
+  - profit_factor_net
+  - total_net_pnl
+  - maximum_drawdown
+  - completed_trades
+
+secondary_metrics_diagnostic_only:
+  - gross_expectancy_R
+  - win_rate
+  - average_win_R
+  - average_loss_R
+  - median_trade_R
+  - longest_losing_streak
+  - exposure_time
+  - intended_vs_realized_risk
+  - by_symbol
+  - by_year
+  - by_direction
+  - by_entry_hour
+  - minutes_between_last_touch_and_confirmation
+  - fvg_size_ticks
+  - fvg_size_normalized_by_atr
+  - simultaneous_signal_conflicts
+  - rejected_quantity_below_minimum
+secondary_metrics_may_not_become_filters_after_discovery: true
+
+discovery_gate:
+  all_required: true
+  criteria:
+    minimum_completed_trades_pooled: 150
+    minimum_completed_trades_per_symbol: 50
+    baseline_net_expectancy_R_gt: 0
+    baseline_profit_factor_net_gte: 1.15
+    baseline_each_symbol_net_positive:
+      - QQQ
+      - SPY
+    stress_net_expectancy_R_gte: 0
+    stress_profit_factor_net_gte: 1.00
+    minimum_positive_discovery_years: 2
+    max_single_year_profit_share: 0.70
+    maximum_drawdown_lte: 0.10
+  if_any_fail:
+    classification: discovery_failed
+    open_2025_validation: false
+    optimize_parameters: false
+    create_variant_inside_hypothesis: false
+
+validation_gate_registered_not_run:
+  no_parameter_changes_from_discovery: true
+  minimum_completed_trades: 40
+  baseline_net_expectancy_R_gt: 0
+  baseline_profit_factor_net_gte: 1.10
+  maximum_drawdown_lte: 0.10
+  if_passes: eligible_for_forward_paper
+  if_fails: rejected
+
+parity_audit_output_columns:
+  - symbol
+  - session_date
+  - direction
+  - opening_high
+  - opening_low
+  - last_sweep_time
+  - signal_time
+  - signal_close
+  - fvg_size
+  - stop
+  - target
+  - intended_quantity
+  - actual_quantity
+  - entry_time
+  - entry_price
+  - exit_time
+  - exit_price
+  - exit_reason
+  - gross_pnl
+  - commission
+  - slippage_cost
+  - net_pnl
+  - intended_R
+  - realized_R
+
+post_preregistration_lock:
+  prohibit_parameter_changes_after_first_discovery_run: true
+  prohibit_parameter_sweep: true
+  prohibit_long_only_or_short_only_after_results: true
+  prohibit_other_R_targets: true
+  prohibit_other_fvg_minimums: true
+  prohibit_other_time_windows: true
+  prohibit_other_stop_definitions: true
+  prohibit_2026_parameter_selection: true
+
+run_state:
+  discovery_executed: false
+  validation_executed: false
+  holdout_2026_executed: false
+  paper_forward_executed: false
+  performance_metrics_generated: false
+
+safety:
+  live_trading: false
+  broker_connected: false
+  orders_sent: false
+  paper_broker_enabled: false
+  broker_apis_allowed: false
+  live_data_allowed: false
+  credential_changes_allowed: false

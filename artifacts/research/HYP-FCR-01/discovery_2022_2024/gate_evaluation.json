@@ -1,0 +1,90 @@
+{
+  "criteria": [
+    {
+      "criterion": "minimum_completed_trades_pooled",
+      "observed": 1025,
+      "passed": true,
+      "threshold": ">= 150"
+    },
+    {
+      "criterion": "minimum_completed_trades_per_symbol",
+      "observed": {
+        "QQQ": 518,
+        "SPY": 507
+      },
+      "passed": true,
+      "threshold": "each >= 50"
+    },
+    {
+      "criterion": "baseline_net_expectancy_R_gt_0",
+      "observed": -0.1465555726130929,
+      "passed": false,
+      "threshold": "> 0"
+    },
+    {
+      "criterion": "baseline_profit_factor_net_gte_1_15",
+      "observed": 0.9096245246854046,
+      "passed": false,
+      "threshold": ">= 1.15"
+    },
+    {
+      "criterion": "qqq_net_positive_baseline",
+      "observed": -59.414069099978676,
+      "passed": false,
+      "threshold": "> 0"
+    },
+    {
+      "criterion": "spy_net_positive_baseline",
+      "observed": -65.83397233998497,
+      "passed": false,
+      "threshold": "> 0"
+    },
+    {
+      "criterion": "stress_net_expectancy_R_gte_0",
+      "observed": -0.27568366594234156,
+      "passed": false,
+      "threshold": ">= 0"
+    },
+    {
+      "criterion": "stress_profit_factor_net_gte_1_00",
+      "observed": 0.8010244036218493,
+      "passed": false,
+      "threshold": ">= 1.00"
+    },
+    {
+      "criterion": "minimum_two_positive_years",
+      "observed": {
+        "2022": 1.4771807600145337,
+        "2023": -38.581265709987136,
+        "2024": -88.14395648999101
+      },
+      "passed": false,
+      "threshold": ">= 2 positive years"
+    },
+    {
+      "criterion": "max_single_year_profit_share_lte_70pct",
+      "observed": {
+        "max_year_share": null,
+        "reason": "pooled_baseline_total_net_pnl_lte_0",
+        "total_net_pnl": -125.24804143996356,
+        "year_contributions": {
+          "2022": null,
+          "2023": null,
+          "2024": null
+        }
+      },
+      "passed": false,
+      "threshold": "total > 0 and max(year_net / total_net) <= 0.70"
+    },
+    {
+      "criterion": "maximum_drawdown_lte_10pct",
+      "observed": 0.12513798001728477,
+      "passed": false,
+      "threshold": "<= 0.10"
+    }
+  ],
+  "status": "discovery_failed",
+  "validation_2025_eligible": false,
+  "validation_2025_unlocked": false,
+  "year_contribution_formula": "year_net_pnl / pooled_baseline_total_net_pnl; if total <= 0 the criterion fails"
+}

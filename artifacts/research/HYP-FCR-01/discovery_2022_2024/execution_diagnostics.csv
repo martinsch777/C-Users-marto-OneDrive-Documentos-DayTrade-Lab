@@ -1,0 +1,4 @@
+symbol,scenario,session_date,timestamp,direction,diagnostic,equity_before_session,actual_quantity
+QQQ,baseline,2023-11-24,2023-11-24T17:55:00+00:00,long,no_next_minute_entry,1021.3621553900166,2
+QQQ,stress,2023-11-24,2023-11-24T17:55:00+00:00,long,no_next_minute_entry,950.5297797800282,2
+QQQ,severe,2023-11-24,2023-11-24T17:55:00+00:00,long,no_next_minute_entry,875.9646195300437,2

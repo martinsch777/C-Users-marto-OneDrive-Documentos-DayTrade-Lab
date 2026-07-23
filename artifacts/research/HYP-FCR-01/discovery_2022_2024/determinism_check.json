@@ -1,0 +1,87 @@
+{
+  "all_match": true,
+  "checks": {
+    "baseline": {
+      "completed_trades": {
+        "match": true,
+        "recomputed": 1025,
+        "stored": 1025
+      },
+      "maximum_drawdown": {
+        "match": true,
+        "recomputed": 0.12513798001728477,
+        "stored": 0.12513798001728477
+      },
+      "net_expectancy_R": {
+        "match": true,
+        "recomputed": -0.1465555726130929,
+        "stored": -0.1465555726130929
+      },
+      "profit_factor_net": {
+        "match": true,
+        "recomputed": 0.9096245246854046,
+        "stored": 0.9096245246854046
+      },
+      "total_net_pnl": {
+        "match": true,
+        "recomputed": -125.24804143996356,
+        "stored": -125.24804143996356
+      }
+    },
+    "severe": {
+      "completed_trades": {
+        "match": true,
+        "recomputed": 1025,
+        "stored": 1025
+      },
+      "maximum_drawdown": {
+        "match": true,
+        "recomputed": 0.2600467528152129,
+        "stored": 0.2600467528152129
+      },
+      "net_expectancy_R": {
+        "match": true,
+        "recomputed": -0.40481175927159013,
+        "stored": -0.40481175927159013
+      },
+      "profit_factor_net": {
+        "match": true,
+        "recomputed": 0.6966854409704368,
+        "stored": 0.6966854409704368
+      },
+      "total_net_pnl": {
+        "match": true,
+        "recomputed": -449.13979181990305,
+        "stored": -449.139791819903
+      }
+    },
+    "stress": {
+      "completed_trades": {
+        "match": true,
+        "recomputed": 1025,
+        "stored": 1025
+      },
+      "maximum_drawdown": {
+        "match": true,
+        "recomputed": 0.18972847423643802,
+        "stored": 0.18972847423643802
+      },
+      "net_expectancy_R": {
+        "match": true,
+        "recomputed": -0.2756836659423416,
+        "stored": -0.27568366594234156
+      },
+      "profit_factor_net": {
+        "match": true,
+        "recomputed": 0.8010244036218493,
+        "stored": 0.8010244036218493
+      },
+      "total_net_pnl": {
+        "match": true,
+        "recomputed": -287.0782841399308,
+        "stored": -287.0782841399308
+      }
+    }
+  },
+  "initial_equity_for_pooled_drawdown": 2000.0
+}

@@ -1,0 +1,86 @@
+schema_version: 1
+family_id: FCR-REFINEMENT-FAMILY-01
+name: First Candle Rule Post-Discovery Refinement Family
+parent_hypothesis: HYP-FCR-01
+origin: post_discovery_refinement_after_observed_discovery_failed
+status: preregistered_not_run
+created_after_observing_parent_failure: true
+git_commit_at_creation: 0c1fbe55297cf71972554cc8d79ae786014a68d2
+canonical_payload_hash: 1ecacc828b91533458ae112ed7c749936612f94a26b2d0b48ea2da0b5948d7ad
+
+variants:
+  exact_ids:
+    - HYP-FCR-02
+    - HYP-FCR-03
+    - HYP-FCR-04
+  no_fourth_variant_allowed: true
+  no_combined_variants_allowed: true
+  one_conceptual_change_per_variant: true
+
+periods:
+  discovery:
+    start: "2022-01-01"
+    end: "2024-12-31"
+    evidence_role: discovery_after_parent_failure
+    independent_evidence: false
+  validation:
+    start: "2025-01-01"
+    end: "2025-12-31"
+    status: closed_unobserved
+    max_variants_that_may_open_validation: 1
+    execute_automatically: false
+  contaminated_2026:
+    status: observed_contaminated_non_decisional
+    allowed_use: parity_debug_only
+  true_holdout:
+    type: forward_paper_after_validation_and_final_freeze
+
+batch_execution_policy:
+  variants_must_run_in_single_batch: true
+  no_partial_results_before_all_variants_finish: true
+  no_parameter_changes_after_viewing_results: true
+  no_new_variants_after_viewing_results: true
+  no_discovery_execution_in_prepare_task: true
+  no_validation_execution_in_prepare_task: true
+  no_2026_execution_in_prepare_task: true
+  no_holdout_execution_in_prepare_task: true
+
+family_selection_policy:
+  if_none_pass_individual_gate:
+    family_status: discovery_failed
+    validation_2025_unlocked: false
+  if_exactly_one_passes:
+    selected_variant: only_passing_variant
+    validation_2025_unlocked: true
+  if_multiple_pass:
+    select_exactly_one: true
+    tie_break_order:
+      - highest_stress_net_expectancy_R
+      - highest_baseline_profit_factor_net_if_stress_expectancy_difference_lt_0_01_R
+      - lowest_baseline_maximum_drawdown
+      - lowest_hypothesis_id
+    non_selected_passed_status: discovery_passed_not_selected
+  validation_execute_automatically: false
+
+individual_gate:
+  all_required: true
+  minimum_completed_trades_pooled: 150
+  minimum_completed_trades_QQQ: 50
+  minimum_completed_trades_SPY: 50
+  baseline_net_expectancy_R_gt: 0
+  baseline_profit_factor_net_gte: 1.15
+  baseline_QQQ_net_positive: true
+  baseline_SPY_net_positive: true
+  stress_net_expectancy_R_gte: 0
+  stress_profit_factor_net_gte: 1.00
+  minimum_positive_discovery_years: 2
+  max_single_year_profit_share: 0.70
+  maximum_drawdown_lte: 0.10
+
+safety:
+  live_trading: false
+  broker_connected: false
+  orders_sent: false
+  paper_broker_enabled: false
+  broker_apis_allowed: false
+  downloads_allowed: false
