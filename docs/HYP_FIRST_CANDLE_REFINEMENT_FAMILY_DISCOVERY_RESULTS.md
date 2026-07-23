@@ -19,6 +19,16 @@ Selected hypothesis: `null`
 
 Validation 2025 unlocked: `false`
 
+Closed for additional variants: `true`
+
+Paper/live eligibility: `false`
+
+Final variant states:
+
+- `HYP-FCR-02`: `discovery_failed`, `validation_2025_eligible=false`, `paper_eligible=false`, `live_eligible=false`
+- `HYP-FCR-03`: `discovery_failed`, `validation_2025_eligible=false`, `paper_eligible=false`, `live_eligible=false`
+- `HYP-FCR-04`: `discovery_failed`, `validation_2025_eligible=false`, `paper_eligible=false`, `live_eligible=false`
+
 No validation 2025, 2026, holdout, optimization, parameter sweep, broker/API
 call, data download, paper trading, or live trading was executed.
 
@@ -26,6 +36,9 @@ call, data download, paper trading, or live trading was executed.
 
 - Observed pre-run commit: `135c3e67cf5d74d99da3bed53be2e1543d22aca0`
 - Working tree before execution: clean
+- Prompt placeholder handling: the requested `<FREEZE_COMMIT>` placeholder was
+  not a concrete hash. The run used the observed clean HEAD above as the freeze
+  commit and recorded it in `family_run_manifest.json`.
 - HYP-FCR-01 state: `discovery_failed`, `validation_2025_unlocked=false`, `closed_for_parameter_changes=true`
 - Execution mode: `research_primary`
 - Discovery range: `2022-01-01` to `2024-12-31`
@@ -43,6 +56,18 @@ Pre-run tests:
 
 - FCR-01, discovery, variants, and family runner: 52 passed
 - Full suite: 330 passed
+
+Post-run verification:
+
+- FCR-01, discovery, variants, and family runner: 52 passed
+- Full suite by modular execution: 330 passed
+- Monolithic `unittest discover` was interrupted by local memory pressure during
+  accumulated large CSV reads in unrelated tests. This is documented as an
+  infrastructure limitation of the monolithic run, not a test failure of the
+  family artifacts.
+- Metrics recomputed from the generated trades matched stored summaries.
+- Artifact checksums matched after recomputation.
+- JSON artifacts contained no NaN or Infinity values.
 
 ## Data
 
@@ -130,6 +155,10 @@ stability, annual concentration, and drawdown.
 baseline expectancy, baseline PF, QQQ/ SPY positivity, stress expectancy,
 stress PF, annual stability, and annual concentration.
 
+`HYP-FCR-04` is not a candidate. Its baseline loss was the least negative in
+the family, but loss minimization after seeing results is not a pass criterion
+and did not unlock validation.
+
 ## Family Selection
 
 Family policy was applied only after all three variants completed:
@@ -139,6 +168,7 @@ Family policy was applied only after all three variants completed:
 - `family_status = discovery_failed`
 - `selected_hypothesis_id = null`
 - `validation_2025_unlocked = false`
+- `closed_for_additional_variants = true`
 
 ## Benchmark
 

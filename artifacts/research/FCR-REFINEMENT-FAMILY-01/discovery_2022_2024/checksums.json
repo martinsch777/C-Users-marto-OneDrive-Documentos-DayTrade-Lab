@@ -20,7 +20,7 @@
   "outputs": [
     {
       "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\family_run_manifest.json",
-      "sha256": "71de8805fd78722077a5d031a9de780bbbdebbdf748c281757be3e2f36bc6e5d"
+      "sha256": "b217f99744488b11f038ec1c2f7adebfabeb10959ed97c7c9ca92d5de3b79c61"
     },
     {
       "path": "artifacts\\research\\FCR-REFINEMENT-FAMILY-01\\discovery_2022_2024\\family_config_snapshot.yaml",
