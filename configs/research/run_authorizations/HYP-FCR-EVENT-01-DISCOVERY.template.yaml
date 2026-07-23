@@ -1,0 +1,14 @@
+hypothesis_id: HYP-FCR-EVENT-01
+allowed_mode: run_discovery
+expected_canonical_hash: 1b6ad06b974d996cdf6bd0a3a21eae097e94322e80fdec94c2cfc4ec3c18fe81
+expected_freeze_commit: TO_BE_FILLED_AFTER_COMMIT
+symbols:
+  - QQQ
+  - SPY
+requested_start: 2022-01-01
+requested_end: 2024-12-31
+validation_allowed: false
+observed_2026_allowed: false
+holdout_allowed: false
+paper_allowed: false
+live_allowed: false

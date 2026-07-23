@@ -118,3 +118,34 @@ Implemented files:
 The runner is locked to `prepare_only`. It can emit a preparation manifest but
 cannot run the event study.
 
+## Operational Discovery Authorization
+
+The methodological YAML remains immutable and its canonical payload hash remains
+`1b6ad06b974d996cdf6bd0a3a21eae097e94322e80fdec94c2cfc4ec3c18fe81`.
+Operational discovery authorization is handled outside the canonical payload by
+`src/research/hyp_first_candle_event_discovery.py` and the template
+`configs/research/run_authorizations/HYP-FCR-EVENT-01-DISCOVERY.template.yaml`.
+
+The default operational mode is `prepare_only`. A future `run_discovery`
+preflight requires explicit full values for `--expected-freeze-commit` and
+`--expected-canonical-hash`. Placeholders such as `<EVENT_FREEZE_COMMIT>` are
+rejected. The freeze commit must be supplied only after the executable code is
+frozen, and the working tree, `HEAD`, canonical hash, hypothesis ID, symbols,
+date range, blocked periods, non-strategy locks, and safety state must all pass
+before any data can be opened.
+
+Discovery remains fixed to QQQ and SPY for `2022-01-01` through `2024-12-31`.
+The runner does not expose CLI arguments to change symbols or dates. Validation
+2025, observed 2026, holdout, paper, and live operation remain blocked.
+
+Dataset resolution uses the approved consolidated curated manifests:
+
+- `data/manifests/QQQ_1min_2022-01-01_2026-07-06_curated_manifest.json`
+- `data/manifests/SPY_1min_2022-01-01_2026-07-06_curated_manifest.json`
+
+The annual raw `SPY` 2023 manifest remains `failed_audit`; that status is not
+relaxed or reused as the final dataset manifest. The consolidated curated SPY
+manifest is allowed only because it formally excludes the entire `2023-06-05`
+session and records that exclusion in metadata. Quality gates are not relaxed,
+and the operational preflight validates manifests by metadata without opening
+OHLC files.
