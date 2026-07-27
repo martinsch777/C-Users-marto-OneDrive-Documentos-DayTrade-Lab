@@ -10,7 +10,9 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 
-from src.data import DatasetManifest
+from src.data.dataset_manifest import DatasetManifest, require_approved_dataset_manifest_file
+from src.data.loader import load_csv
+from src.data.sessions import EquitySessionCalendar
 from src.research.event_study import DEFAULT_EVENT_STUDY_HORIZONS
 from src.research.hyp_first_candle import (
     FirstCandleConfig,
@@ -113,12 +115,31 @@ def load_approved_event_dataset(
     *,
     allowed_purpose: str = "OR_FVG_BACKTEST_RESEARCH",
 ) -> tuple[pd.DataFrame, DatasetManifest]:
-    return load_symbol_curated_1min(
+    if allowed_purpose != "OR_FVG_BACKTEST_RESEARCH":
+        raise PermissionError(f"Unsupported event dataset purpose: {allowed_purpose}")
+    calendar = EquitySessionCalendar.from_config({"source": "us_equity"})
+    manifest = require_approved_dataset_manifest_file(
+        csv_path,
         symbol,
-        csv_path=Path(csv_path),
-        manifest_path=Path(manifest_path),
-        allowed_purpose=allowed_purpose,
+        "1min",
+        manifest_path,
     )
+    excluded = {
+        str(item.get("date"))
+        for item in manifest.excluded_sessions
+        if str(item.get("symbol", symbol)).upper() == symbol.upper()
+    }
+    frame, report = load_csv(
+        Path(csv_path),
+        "1min",
+        asset_class="equity",
+        drop_incomplete=False,
+        calendar=calendar,
+        excluded_session_dates=excluded,
+    )
+    if not report.is_valid:
+        raise ValueError(f"{symbol.upper()} event-study dataset failed OHLCV quality validation")
+    return frame, manifest
 
 
 def _add_atr_14(data: pd.DataFrame) -> pd.DataFrame:
@@ -528,15 +549,53 @@ def compute_fcr_event_paths(
         event_close = float(session.loc[event_position, "close"])
         for horizon in horizons:
             delta = _horizon_delta(horizon)
+            unavailable_record = {
+                "hypothesis_id": str(event.get("hypothesis_id", HYPOTHESIS_ID)),
+                "symbol": str(event["symbol"]),
+                "session_date": str(event["session_date"]),
+                "year": int(event.get("year", event_time.year)),
+                "event_type": str(event["event_type"]),
+                "event_side": str(event["event_side"]),
+                "orientation": "long_reversal" if str(event["event_side"]) == "low" else "short_reversal",
+                "event_time": event_time,
+                "horizon": horizon,
+                "event_price": event_close,
+                "availability_status": "unavailable",
+                "future_close": np.nan,
+                "horizon_close": np.nan,
+                "raw_return": np.nan,
+                "future_return": np.nan,
+                "reversal_return": np.nan,
+                "continuation_return": np.nan,
+                "maximum_favorable_excursion": np.nan,
+                "MFE": np.nan,
+                "maximum_adverse_excursion": np.nan,
+                "MAE": np.nan,
+                "time_to_mfe": pd.NaT,
+                "time_to_MFE": pd.NaT,
+                "time_to_mae": pd.NaT,
+                "time_to_MAE": pd.NaT,
+                "path_high": np.nan,
+                "path_low": np.nan,
+                "returned_to_or_center": False,
+                "return_to_OR_midpoint": False,
+                "reached_opposite_or_extreme": False,
+                "reached_opposite_OR_extreme": False,
+                "broke_same_or_extreme": False,
+                "rebreak_same_extreme": False,
+                "bars_in_path": 0,
+            }
             if delta is None:
                 horizon_position = len(session) - 1
             else:
                 target = event_time + delta
                 candidates = session.index[session["timestamp"] == target].tolist()
                 if not candidates:
+                    rows.append(unavailable_record)
                     continue
                 horizon_position = int(candidates[0])
             if horizon_position <= event_position:
+                rows.append(unavailable_record)
                 continue
             path = session.iloc[event_position + 1 : horizon_position + 1]
             future_close = float(session.loc[horizon_position, "close"])
@@ -569,22 +628,36 @@ def compute_fcr_event_paths(
                     "hypothesis_id": str(event.get("hypothesis_id", HYPOTHESIS_ID)),
                     "symbol": str(event["symbol"]),
                     "session_date": str(event["session_date"]),
+                    "year": int(event.get("year", event_time.year)),
                     "event_type": str(event["event_type"]),
                     "event_side": side,
+                    "orientation": "long_reversal" if side == "low" else "short_reversal",
                     "event_time": event_time,
                     "horizon": horizon,
                     "event_price": event_close,
+                    "availability_status": "available",
                     "future_close": future_close,
+                    "horizon_close": future_close,
                     "raw_return": float(raw_return),
+                    "future_return": float(raw_return),
                     "reversal_return": float(reversal_return),
                     "continuation_return": float(continuation_return),
                     "maximum_favorable_excursion": float(mfe),
+                    "MFE": float(mfe),
                     "maximum_adverse_excursion": float(mae),
+                    "MAE": float(mae),
                     "time_to_mfe": time_to_mfe,
+                    "time_to_MFE": time_to_mfe,
                     "time_to_mae": time_to_mae,
+                    "time_to_MAE": time_to_mae,
+                    "path_high": float(high_path.max()),
+                    "path_low": float(low_path.min()),
                     "returned_to_or_center": returned_center,
+                    "return_to_OR_midpoint": returned_center,
                     "reached_opposite_or_extreme": reached_opposite,
+                    "reached_opposite_OR_extreme": reached_opposite,
                     "broke_same_or_extreme": broke_same,
+                    "rebreak_same_extreme": broke_same,
                     "bars_in_path": int(len(path)),
                 }
             )
@@ -598,14 +671,15 @@ def bootstrap_mean_by_session(
     n_bootstrap: int = 500,
     seed: int = 17,
 ) -> tuple[float, float]:
-    if frame.empty:
+    available = frame.loc[frame[value_column].notna()].copy()
+    if available.empty:
         return np.nan, np.nan
-    sessions = np.array(sorted(frame["session_date"].astype(str).unique()))
+    sessions = np.array(sorted(available["session_date"].astype(str).unique()))
     rng = np.random.default_rng(seed)
     sampled_means: list[float] = []
     for _ in range(n_bootstrap):
         sampled_sessions = rng.choice(sessions, size=len(sessions), replace=True)
-        sample = pd.concat([frame.loc[frame["session_date"].astype(str) == item] for item in sampled_sessions])
+        sample = pd.concat([available.loc[available["session_date"].astype(str) == item] for item in sampled_sessions])
         sampled_means.append(float(sample[value_column].mean()))
     return float(np.percentile(sampled_means, 2.5)), float(np.percentile(sampled_means, 97.5))
 
@@ -623,6 +697,7 @@ def aggregate_fcr_event_paths(
     for key, group in paths.groupby(list(group_by), sort=True):
         if not isinstance(key, tuple):
             key = (key,)
+        available = group.loc[group["reversal_return"].notna()].copy()
         ci_low, ci_high = bootstrap_mean_by_session(
             group,
             value_column="reversal_return",
@@ -632,16 +707,24 @@ def aggregate_fcr_event_paths(
         record = {column: value for column, value in zip(group_by, key)}
         record.update(
             {
+                "count": int(len(group)),
                 "event_count": int(len(group)),
+                "available_count": int(len(available)),
                 "session_count": int(group["session_date"].nunique()),
-                "mean_reversal_return": float(group["reversal_return"].mean()),
-                "median_reversal_return": float(group["reversal_return"].median()),
-                "mean_continuation_return": float(group["continuation_return"].mean()),
-                "median_continuation_return": float(group["continuation_return"].median()),
-                "mean_mfe": float(group["maximum_favorable_excursion"].mean()),
-                "mean_mae": float(group["maximum_adverse_excursion"].mean()),
+                "mean_reversal_return": float(available["reversal_return"].mean()) if not available.empty else np.nan,
+                "median_reversal_return": float(available["reversal_return"].median()) if not available.empty else np.nan,
+                "std_reversal_return": float(available["reversal_return"].std(ddof=1)) if len(available) > 1 else 0.0 if len(available) == 1 else np.nan,
+                "favorable_percentage": float((available["reversal_return"] > 0).mean()) if not available.empty else np.nan,
+                "mean_continuation_return": float(available["continuation_return"].mean()) if not available.empty else np.nan,
+                "median_continuation_return": float(available["continuation_return"].median()) if not available.empty else np.nan,
+                "mean_mfe": float(available["maximum_favorable_excursion"].mean()) if not available.empty else np.nan,
+                "median_mfe": float(available["maximum_favorable_excursion"].median()) if not available.empty else np.nan,
+                "mean_mae": float(available["maximum_adverse_excursion"].mean()) if not available.empty else np.nan,
+                "median_mae": float(available["maximum_adverse_excursion"].median()) if not available.empty else np.nan,
                 "bootstrap_reversal_mean_ci_low": ci_low,
                 "bootstrap_reversal_mean_ci_high": ci_high,
+                "bootstrap_grouped_by": "session_date",
+                "bootstrap_seed": int(seed),
             }
         )
         rows.append(record)

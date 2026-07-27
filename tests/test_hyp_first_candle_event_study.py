@@ -281,20 +281,29 @@ class HypFirstCandleEventStudyTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             validate_event_study_request(FcrEventStudyRunRequest(mode="run"))  # type: ignore[arg-type]
 
-    def test_26_outputs_do_not_include_order_or_position_sizing_columns(self):
+    def test_26_runner_run_discovery_requires_freeze_commit(self):
+        with self.assertRaises(PermissionError):
+            validate_event_study_request(
+                FcrEventStudyRunRequest(
+                    mode="run_discovery",
+                    expected_canonical_hash="f" * 64,
+                )
+            )
+
+    def test_27_outputs_do_not_include_order_or_position_sizing_columns(self):
         data = base_day([bar("2024-07-01 10:00", 100, 100.2, 99.0, 100), bar("2024-07-01 10:05", 100, 101, 99.5, 101)])
         events = detect_fcr_event_study_events(data, "QQQ")
         paths = compute_fcr_event_paths(data, events.loc[events["event_type"] == "EVENT-01"], horizons=("5min",))
         assert_no_strategy_columns(events)
         assert_no_strategy_columns(paths)
 
-    def test_27_event_detection_is_deterministic(self):
+    def test_28_event_detection_is_deterministic(self):
         data = base_day([bar("2024-07-01 10:00", 100, 100.2, 99.0, 100), bar("2024-07-01 10:05", 100, 101, 99.5, 101)])
         first = detect_fcr_event_study_events(data, "QQQ")
         second = detect_fcr_event_study_events(data, "QQQ")
         pd.testing.assert_frame_equal(first, second)
 
-    def test_28_config_declares_no_strategy_intent(self):
+    def test_29_config_declares_no_strategy_intent(self):
         config = FcrEventStudyConfig()
         self.assertEqual(config.allowed_periods, ("discovery_2022_2024",))
         self.assertFalse(any(config.safety_flags.values()))

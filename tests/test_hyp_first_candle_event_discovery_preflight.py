@@ -4,19 +4,25 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
+import pandas as pd
 import yaml
 
 from src.research.hyp_first_candle_event_discovery import (
     DISCOVERY_END,
     DISCOVERY_START,
+    ALLOWED_CLASSIFICATIONS,
     EXPECTED_SYMBOLS,
+    REQUIRED_OUTPUT_FILES,
     FcrEventDiscoveryRequest,
     RuntimeState,
+    filter_discovery_analytic_frame,
     prepare_only_manifest,
+    run_operational_discovery,
     validate_discovery_preflight,
 )
-from src.research.hyp_first_candle_event_study import canonical_event_config_hash
+from src.research.hyp_first_candle_event_study import EVENT_TYPES, FcrEventStudyConfig, canonical_event_config_hash
 
 
 HEAD = "0" * 40
@@ -305,6 +311,313 @@ class HypFirstCandleEventDiscoveryPreflightTests(unittest.TestCase):
         self.assertNotIn("events_csv", payload)
         self.assertNotIn("path_metrics_csv", payload)
         self.assertFalse(payload["results_written"])
+
+    def fake_loader(self, symbol: str, csv_path: Path, manifest_path: Path):
+        timestamps = [
+            "2024-07-01 09:30",
+            "2024-07-01 10:00",
+            "2025-01-02 10:00",
+            "2026-01-02 10:00",
+        ]
+        if symbol == "SPY":
+            timestamps.append("2023-06-05 10:00")
+        rows = [
+            {
+                "timestamp": pd.Timestamp(value, tz="America/New_York").tz_convert("UTC"),
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.0,
+                "volume": 1000,
+            }
+            for value in timestamps
+            if not (symbol == "SPY" and value.startswith("2023-06-05"))
+        ]
+        manifest = {
+            "symbol": symbol,
+            "sha256": f"{symbol.lower()}-sha",
+            "excluded_sessions": [
+                {"symbol": "SPY", "date": "2023-06-05", "policy": "exclude_entire_session"}
+            ]
+            if symbol == "SPY"
+            else [],
+        }
+        return pd.DataFrame(rows), manifest
+
+    def fake_prepare(self, frame: pd.DataFrame) -> pd.DataFrame:
+        local_dates = pd.to_datetime(frame["timestamp"], utc=True).dt.tz_convert("America/New_York").dt.date
+        self.assertFalse(any(item.year >= 2025 for item in local_dates))
+        self.assertNotIn("2023-06-05", {str(item) for item in local_dates})
+        return frame
+
+    def fake_events(self, five_minute: pd.DataFrame, symbol: str, config: FcrEventStudyConfig):
+        base_time = pd.Timestamp("2024-07-01 10:00", tz="America/New_York").tz_convert("UTC")
+        return pd.DataFrame(
+            [
+                {
+                    "hypothesis_id": "HYP-FCR-EVENT-01",
+                    "symbol": symbol,
+                    "session_date": "2024-07-01",
+                    "event_type": event_type,
+                    "event_side": "low" if index % 2 else "high",
+                    "event_time": base_time + pd.Timedelta(int(index), unit="min"),
+                    "event_price": 100.0,
+                    "opening_high": 101.0,
+                    "opening_low": 99.0,
+                    "opening_midpoint": 100.0,
+                    "year": 2024,
+                }
+                for index, event_type in enumerate(EVENT_TYPES)
+            ]
+        )
+
+    def fake_paths(self, five_minute: pd.DataFrame, events: pd.DataFrame, config: FcrEventStudyConfig, *, horizons=None):
+        rows = []
+        for _, event in events.iterrows():
+            for horizon in horizons or config.horizons:
+                rows.append(
+                    {
+                        "hypothesis_id": "HYP-FCR-EVENT-01",
+                        "symbol": event["symbol"],
+                        "session_date": event["session_date"],
+                        "year": int(event["year"]),
+                        "event_type": event["event_type"],
+                        "event_side": event["event_side"],
+                        "orientation": "long_reversal" if event["event_side"] == "low" else "short_reversal",
+                        "event_time": event["event_time"],
+                        "horizon": horizon,
+                        "event_price": 100.0,
+                        "availability_status": "available",
+                        "future_close": 101.0,
+                        "horizon_close": 101.0,
+                        "raw_return": 0.01,
+                        "future_return": 0.01,
+                        "reversal_return": 0.01,
+                        "continuation_return": -0.01,
+                        "maximum_favorable_excursion": 0.02,
+                        "MFE": 0.02,
+                        "maximum_adverse_excursion": -0.005,
+                        "MAE": -0.005,
+                        "time_to_mfe": event["event_time"],
+                        "time_to_MFE": event["event_time"],
+                        "time_to_mae": event["event_time"],
+                        "time_to_MAE": event["event_time"],
+                        "path_high": 102.0,
+                        "path_low": 99.5,
+                        "returned_to_or_center": True,
+                        "return_to_OR_midpoint": True,
+                        "reached_opposite_or_extreme": False,
+                        "reached_opposite_OR_extreme": False,
+                        "broke_same_or_extreme": False,
+                        "rebreak_same_extreme": False,
+                        "bars_in_path": 1,
+                    }
+                )
+        return pd.DataFrame(rows)
+
+    def run_synthetic_discovery(self, root: Path, output: Path):
+        request = self.make_request(root)
+        with patch("src.research.hyp_first_candle_event_discovery.prepare_five_minute_frame", self.fake_prepare), patch(
+            "src.research.hyp_first_candle_event_discovery.detect_fcr_event_study_events", self.fake_events
+        ), patch("src.research.hyp_first_candle_event_discovery.compute_fcr_event_paths", self.fake_paths):
+            return run_operational_discovery(
+                request,
+                output_dir=output,
+                runtime_state=RuntimeState(HEAD, True),
+                dataset_loader=self.fake_loader,
+                n_bootstrap=10,
+            )
+
+    def test_23_run_discovery_calls_engine_only_after_preflight_pass(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = self.make_request(root)
+            executor = Mock(return_value={"results_written": True, "output_dir": str(root / "out"), "required_outputs": [], "event_count": 0, "path_metric_rows": 0})
+            with patch("src.research.hyp_first_candle_event_discovery._execute_event_study_outputs", executor):
+                payload = run_operational_discovery(request, output_dir=root / "out", runtime_state=RuntimeState(HEAD, True))
+            self.assertTrue(payload["event_study_executed"])
+            executor.assert_called_once()
+
+    def test_24_preflight_fail_prevents_data_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = self.make_request(root, expected_freeze_commit=OTHER_HEAD)
+            loader = Mock(side_effect=AssertionError("data loader must not run"))
+            with self.assertRaises(PermissionError):
+                run_operational_discovery(request, output_dir=root / "out", runtime_state=RuntimeState(HEAD, True), dataset_loader=loader)
+            loader.assert_not_called()
+
+    def test_25_prepare_only_never_calls_engine(self):
+        executor = Mock(side_effect=AssertionError("engine must not run"))
+        with patch("src.research.hyp_first_candle_event_discovery._execute_event_study_outputs", executor):
+            payload = run_operational_discovery(FcrEventDiscoveryRequest(), runtime_state=RuntimeState(HEAD, True))
+        self.assertFalse(payload["event_study_executed"])
+        executor.assert_not_called()
+
+    def test_26_run_discovery_success_marks_executed_and_written(self):
+        with tempfile.TemporaryDirectory() as directory:
+            payload = self.run_synthetic_discovery(Path(directory), Path(directory) / "out")
+            self.assertTrue(payload["event_study_executed"])
+            self.assertTrue(payload["results_written"])
+
+    def test_27_results_written_requires_verified_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = self.make_request(root)
+            with patch("src.research.hyp_first_candle_event_discovery._verify_required_outputs", side_effect=FileNotFoundError("missing")):
+                payload = run_operational_discovery(
+                    request,
+                    output_dir=root / "out",
+                    runtime_state=RuntimeState(HEAD, True),
+                    dataset_loader=self.fake_loader,
+                    raise_on_error=False,
+                )
+            self.assertTrue(payload["event_study_executed"])
+            self.assertFalse(payload["results_written"])
+
+    def test_28_error_during_study_leaves_results_written_false(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = self.make_request(root)
+            with patch("src.research.hyp_first_candle_event_discovery._execute_event_study_outputs", side_effect=RuntimeError("boom")):
+                payload = run_operational_discovery(
+                    request,
+                    output_dir=root / "out",
+                    runtime_state=RuntimeState(HEAD, True),
+                    raise_on_error=False,
+                )
+            self.assertFalse(payload["results_written"])
+
+    def test_29_no_final_partial_artifacts_after_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = self.make_request(root)
+            with patch("src.research.hyp_first_candle_event_discovery._verify_required_outputs", side_effect=FileNotFoundError("missing")):
+                run_operational_discovery(
+                    request,
+                    output_dir=root / "out",
+                    runtime_state=RuntimeState(HEAD, True),
+                    dataset_loader=self.fake_loader,
+                    raise_on_error=False,
+                )
+            self.assertFalse((root / "out").exists())
+
+    def test_30_strict_crop_excludes_2025_and_2026(self):
+        data, _ = self.fake_loader("QQQ", Path("QQQ.csv"), Path("manifest.json"))
+        filtered = filter_discovery_analytic_frame(data, "QQQ")
+        years = set(pd.to_datetime(filtered["timestamp"], utc=True).dt.tz_convert("America/New_York").dt.year)
+        self.assertEqual(years, {2024})
+
+    def test_31_spy_excluded_session_is_not_allowed_in_analytic_frame(self):
+        data = pd.DataFrame(
+            [
+                {
+                    "timestamp": pd.Timestamp("2023-06-05 10:00", tz="America/New_York").tz_convert("UTC"),
+                    "open": 1,
+                    "high": 1,
+                    "low": 1,
+                    "close": 1,
+                    "volume": 1,
+                }
+            ]
+        )
+        with self.assertRaises(AssertionError):
+            filter_discovery_analytic_frame(data, "SPY")
+
+    def test_32_exactly_ten_event_types_are_recorded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.run_synthetic_discovery(root, root / "out")
+            manifest = json.loads((root / "out" / "run_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(tuple(manifest["event_types_executed"]), EVENT_TYPES)
+
+    def test_33_exact_preregistered_horizons_are_recorded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.run_synthetic_discovery(root, root / "out")
+            manifest = json.loads((root / "out" / "run_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(tuple(manifest["horizons"]), ("5min", "15min", "30min", "60min", "session_close"))
+
+    def test_34_outputs_have_no_orders(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.run_synthetic_discovery(root, root / "out")
+            text = (root / "out" / "events.csv").read_text(encoding="utf-8") + (root / "out" / "path_metrics.csv").read_text(encoding="utf-8")
+            self.assertNotIn("order", text.lower())
+
+    def test_35_outputs_have_no_position_sizing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.run_synthetic_discovery(root, root / "out")
+            text = "\n".join(path.read_text(encoding="utf-8") for path in (root / "out").glob("*.csv"))
+            self.assertNotIn("position_size", text)
+            self.assertNotIn("quantity", text)
+
+    def test_36_discovery_module_does_not_import_brokers(self):
+        import ast
+
+        tree = ast.parse(Path("src/research/hyp_first_candle_event_discovery.py").read_text(encoding="utf-8"))
+        imported_modules = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported_modules.extend(alias.name.lower() for alias in node.names)
+            if isinstance(node, ast.ImportFrom) and node.module:
+                imported_modules.append(node.module.lower())
+        self.assertFalse(any("alpaca" in module or "bybit" in module for module in imported_modules))
+
+    def test_37_classifications_are_limited_to_allowed_set(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.run_synthetic_discovery(root, root / "out")
+            payload = json.loads((root / "out" / "classification.json").read_text(encoding="utf-8"))
+            self.assertIn(payload["classification"], ALLOWED_CLASSIFICATIONS)
+
+    def test_38_bootstrap_is_grouped_by_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.run_synthetic_discovery(root, root / "out")
+            intervals = pd.read_csv(root / "out" / "bootstrap_intervals.csv")
+            self.assertEqual(set(intervals["bootstrap_grouped_by"]), {"session_date"})
+
+    def test_39_checksums_are_deterministic(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.run_synthetic_discovery(root, root / "out1")
+            self.run_synthetic_discovery(root, root / "out2")
+            first = json.loads((root / "out1" / "checksums.json").read_text(encoding="utf-8"))
+            second = json.loads((root / "out2" / "checksums.json").read_text(encoding="utf-8"))
+            self.assertEqual(first, second)
+
+    def test_40_results_are_reproducible_with_same_seed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.run_synthetic_discovery(root, root / "out1")
+            self.run_synthetic_discovery(root, root / "out2")
+            first = (root / "out1" / "aggregate_metrics.csv").read_text(encoding="utf-8")
+            second = (root / "out2" / "aggregate_metrics.csv").read_text(encoding="utf-8")
+            self.assertEqual(first, second)
+
+    def test_41_registry_is_not_modified_if_execution_fails(self):
+        registry = Path("docs/RESEARCH_HYPOTHESIS_REGISTRY.md")
+        before = registry.read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = self.make_request(root)
+            with patch("src.research.hyp_first_candle_event_discovery._execute_event_study_outputs", side_effect=RuntimeError("boom")):
+                run_operational_discovery(request, output_dir=root / "out", runtime_state=RuntimeState(HEAD, True), raise_on_error=False)
+        self.assertEqual(registry.read_text(encoding="utf-8"), before)
+
+    def test_42_prepare_only_generates_no_results_document(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run_operational_discovery(FcrEventDiscoveryRequest(), output_dir=root / "out", runtime_state=RuntimeState(HEAD, True))
+            self.assertFalse((root / "out").exists())
+
+    def test_43_successful_run_writes_exact_required_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.run_synthetic_discovery(root, root / "out")
+            self.assertEqual({path.name for path in (root / "out").iterdir()}, set(REQUIRED_OUTPUT_FILES))
 
 
 if __name__ == "__main__":
