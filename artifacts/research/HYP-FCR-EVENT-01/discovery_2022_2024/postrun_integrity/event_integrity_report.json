@@ -1,0 +1,42 @@
+{
+  "counts_total": 8498,
+  "derived_event_id_duplicate_count": 0,
+  "derived_event_id_policy": "sha1(symbol|session_date|event_type|event_side|event_time)",
+  "derived_event_id_unique": true,
+  "event_id_column_present": false,
+  "event_type_dtype": "object",
+  "event_type_empty_count": 0,
+  "event_type_null_count": 0,
+  "event_type_outer_space_or_invisible_count": 0,
+  "exact_duplicate_rows": 0,
+  "expected_total_rows": 8498,
+  "hypothesis_id": "HYP-FCR-EVENT-01",
+  "integrity_passed": true,
+  "malformed_event_type_rows": 0,
+  "malformed_symbol_rows": 0,
+  "qqq_event_05_count": 312,
+  "root_cause_312_events": "No events are missing. The 312-row discrepancy is QQQ EVENT-05; the visible manual grouping omitted that row group.",
+  "spy_event_05_count": 336,
+  "symbol_dtype": "object",
+  "symbol_empty_count": 0,
+  "symbol_null_count": 0,
+  "symbol_outer_space_or_invisible_count": 0,
+  "total_matches_expected": true,
+  "total_rows": 8498,
+  "unique_event_types": [
+    "EVENT-01",
+    "EVENT-02",
+    "EVENT-03",
+    "EVENT-04",
+    "EVENT-05",
+    "EVENT-06",
+    "EVENT-07",
+    "EVENT-08",
+    "EVENT-09",
+    "EVENT-10"
+  ],
+  "unique_symbols": [
+    "QQQ",
+    "SPY"
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "inputs": [
+    {
+      "path": "configs\\research\\hypotheses\\HYP-FCR-EVENT-01.yaml",
+      "sha256": "982dd4774544468340e3c2e04f6eec1a0a49c7a86c151b92737c8d5060493712"
+    },
+    {
+      "path": "data\\manifests\\QQQ_1min_2022-01-01_2026-07-06_curated_manifest.json",
+      "sha256": "aa003d83a6d01ed21e8f76e7d6a2f6617a7d97941a7d007e77b56a94ace15e83"
+    },
+    {
+      "path": "data\\manifests\\SPY_1min_2022-01-01_2026-07-06_curated_manifest.json",
+      "sha256": "bd174fbf01cbf609cc900b62f91af6c6ae68905bc7cc90a9b1e3133e8af70a9e"
+    }
+  ],
+  "outputs": [
+    {
+      "path": "run_manifest.json",
+      "sha256": "cdc3cb74db90c98d540f1b20ab6b2b1bea6265298e0437e9ef0e7adc67e77ba8"
+    },
+    {
+      "path": "dataset_manifest_snapshot.json",
+      "sha256": "9818fb25435faf58dfd19e538d6e820094dd2dc83e0be97f01aebe180147f6cf"
+    },
+    {
+      "path": "config_snapshot.yaml",
+      "sha256": "982dd4774544468340e3c2e04f6eec1a0a49c7a86c151b92737c8d5060493712"
+    },
+    {
+      "path": "events.csv",
+      "sha256": "5742ae0e907823f37a1d5e67b94cecc447d6b4487abf86a2e2f82e63d6bf2a44"
+    },
+    {
+      "path": "path_metrics.csv",
+      "sha256": "b311419776e9ea53ab1e961a56be6da3131acbca55f6f8372c2517c0f09cd87c"
+    },
+    {
+      "path": "aggregate_metrics.csv",
+      "sha256": "375c6048ddbb13e8add534cfcd9daecd11a8f5eeacb02c047bae6a3ee0ab88a6"
+    },
+    {
+      "path": "metrics_by_symbol.csv",
+      "sha256": "d7e4973013124e8a179016fa34d55c87fd658cc890b1bc14b8ad07be36ab0a59"
+    },
+    {
+      "path": "metrics_by_year.csv",
+      "sha256": "ad226ad3f78f5cc490cef076a35b7d2b0f9ac20c5c1ea2becc80903a11b0e29c"
+    },
+    {
+      "path": "metrics_by_event.csv",
+      "sha256": "6538faff962578948475fd677f6d5908f315e1bbdd4c8e0c9401149d2e593e6b"
+    },
+    {
+      "path": "metrics_by_horizon.csv",
+      "sha256": "0bb7730cefe8495b97c7fac7e62e9b10de3d7c23193c55f97ac5140b7b21cbc3"
+    },
+    {
+      "path": "bootstrap_intervals.csv",
+      "sha256": "9780ece46a40a29e9f12a14e5fad66790f1f0ff72e1747e2a40525f39d50b2e0"
+    },
+    {
+      "path": "economic_threshold_comparison.csv",
+      "sha256": "455444a34b49d91a86d7a53f0932e77e5a07749620061696b063bde43d19e968"
+    },
+    {
+      "path": "classification.json",
+      "sha256": "3f69823e0b9444bb16ae0e97acf3f025fa5b6d77315f5cb4e83b813c87fed881"
+    }
+  ]
+}

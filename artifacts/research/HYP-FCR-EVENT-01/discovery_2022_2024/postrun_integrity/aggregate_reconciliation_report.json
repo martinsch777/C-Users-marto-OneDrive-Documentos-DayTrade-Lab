@@ -1,0 +1,101 @@
+{
+  "all_files_match_tolerance": true,
+  "checksums": {
+    "aggregate_metrics.csv": {
+      "persisted_sha256": "375c6048ddbb13e8add534cfcd9daecd11a8f5eeacb02c047bae6a3ee0ab88a6",
+      "recomputed_sha256": "bdead2a2b903c040c1a202cc3dfca0208878959b3ffd4b6fc4533ab088c03396"
+    },
+    "bootstrap_intervals.csv": {
+      "persisted_sha256": "9780ece46a40a29e9f12a14e5fad66790f1f0ff72e1747e2a40525f39d50b2e0",
+      "recomputed_sha256": "0881de9d5b6e8dba15009d92f17e497cf8c4115841c59f80321162471f06d704"
+    },
+    "economic_threshold_comparison.csv": {
+      "persisted_sha256": "455444a34b49d91a86d7a53f0932e77e5a07749620061696b063bde43d19e968",
+      "recomputed_sha256": "52182e87982d3f5c74df51efcb6c6763994cf8059b4f34b9761ef7e6b4b455c1"
+    },
+    "metrics_by_event.csv": {
+      "persisted_sha256": "6538faff962578948475fd677f6d5908f315e1bbdd4c8e0c9401149d2e593e6b",
+      "recomputed_sha256": "83644748478d621e2721d382d4834959a29478b7f7898160508b05728e34a2e1"
+    },
+    "metrics_by_horizon.csv": {
+      "persisted_sha256": "0bb7730cefe8495b97c7fac7e62e9b10de3d7c23193c55f97ac5140b7b21cbc3",
+      "recomputed_sha256": "5cd7aab266ad32ff0163a28ea8cb4066ba1939c65dbf7c5b78bb4092a08e5a2f"
+    },
+    "metrics_by_symbol.csv": {
+      "persisted_sha256": "d7e4973013124e8a179016fa34d55c87fd658cc890b1bc14b8ad07be36ab0a59",
+      "recomputed_sha256": "aeaeccbd86ed4a85ed1bfbeef0e905e1f6b6bdae32caaa69d9350b32c8933d2b"
+    },
+    "metrics_by_year.csv": {
+      "persisted_sha256": "ad226ad3f78f5cc490cef076a35b7d2b0f9ac20c5c1ea2becc80903a11b0e29c",
+      "recomputed_sha256": "856248c7e9c2f42d2d1850bc16ad252b6383253d85c05c53f119224d14361f92"
+    }
+  },
+  "comparisons": [
+    {
+      "file": "aggregate_metrics.csv",
+      "mismatch_count": 0,
+      "mismatch_path": "artifacts\\research\\HYP-FCR-EVENT-01\\discovery_2022_2024\\postrun_integrity\\aggregate_metrics_mismatches.csv",
+      "row_count_match": true,
+      "row_count_original": 300,
+      "row_count_recomputed": 300,
+      "tolerance": 1e-12
+    },
+    {
+      "file": "metrics_by_symbol.csv",
+      "mismatch_count": 0,
+      "mismatch_path": "artifacts\\research\\HYP-FCR-EVENT-01\\discovery_2022_2024\\postrun_integrity\\metrics_by_symbol_mismatches.csv",
+      "row_count_match": true,
+      "row_count_original": 2,
+      "row_count_recomputed": 2,
+      "tolerance": 1e-12
+    },
+    {
+      "file": "metrics_by_year.csv",
+      "mismatch_count": 0,
+      "mismatch_path": "artifacts\\research\\HYP-FCR-EVENT-01\\discovery_2022_2024\\postrun_integrity\\metrics_by_year_mismatches.csv",
+      "row_count_match": true,
+      "row_count_original": 3,
+      "row_count_recomputed": 3,
+      "tolerance": 1e-12
+    },
+    {
+      "file": "metrics_by_event.csv",
+      "mismatch_count": 0,
+      "mismatch_path": "artifacts\\research\\HYP-FCR-EVENT-01\\discovery_2022_2024\\postrun_integrity\\metrics_by_event_mismatches.csv",
+      "row_count_match": true,
+      "row_count_original": 10,
+      "row_count_recomputed": 10,
+      "tolerance": 1e-12
+    },
+    {
+      "file": "metrics_by_horizon.csv",
+      "mismatch_count": 0,
+      "mismatch_path": "artifacts\\research\\HYP-FCR-EVENT-01\\discovery_2022_2024\\postrun_integrity\\metrics_by_horizon_mismatches.csv",
+      "row_count_match": true,
+      "row_count_original": 5,
+      "row_count_recomputed": 5,
+      "tolerance": 1e-12
+    },
+    {
+      "file": "bootstrap_intervals.csv",
+      "mismatch_count": 0,
+      "mismatch_path": "artifacts\\research\\HYP-FCR-EVENT-01\\discovery_2022_2024\\postrun_integrity\\bootstrap_intervals_mismatches.csv",
+      "row_count_match": true,
+      "row_count_original": 300,
+      "row_count_recomputed": 300,
+      "tolerance": 1e-12
+    },
+    {
+      "file": "economic_threshold_comparison.csv",
+      "mismatch_count": 0,
+      "mismatch_path": "artifacts\\research\\HYP-FCR-EVENT-01\\discovery_2022_2024\\postrun_integrity\\economic_threshold_comparison_mismatches.csv",
+      "row_count_match": true,
+      "row_count_original": 300,
+      "row_count_recomputed": 300,
+      "tolerance": 1e-12
+    }
+  ],
+  "count_semantics": "count and event_count are path row counts, not unique event counts; available_count excludes unavailable horizon rows.",
+  "recommended_documental_name_for_count": "path_row_count",
+  "tolerance": 1e-12
+}

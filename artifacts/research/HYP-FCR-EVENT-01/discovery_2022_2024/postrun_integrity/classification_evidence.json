@@ -1,0 +1,55 @@
+{
+  "all_combinations_evaluated_path": "artifacts\\research\\HYP-FCR-EVENT-01\\discovery_2022_2024\\postrun_integrity\\classification_evidence.csv",
+  "causing_combinations": [
+    {
+      "event_type": "EVENT-07",
+      "horizon": "15min",
+      "orientation": "long_reversal"
+    },
+    {
+      "event_type": "EVENT-07",
+      "horizon": "30min",
+      "orientation": "long_reversal"
+    },
+    {
+      "event_type": "EVENT-07",
+      "horizon": "5min",
+      "orientation": "long_reversal"
+    },
+    {
+      "event_type": "EVENT-08",
+      "horizon": "15min",
+      "orientation": "short_reversal"
+    },
+    {
+      "event_type": "EVENT-08",
+      "horizon": "30min",
+      "orientation": "short_reversal"
+    },
+    {
+      "event_type": "EVENT-08",
+      "horizon": "60min",
+      "orientation": "short_reversal"
+    }
+  ],
+  "classification_audit_status": "passed",
+  "criteria": [
+    "bootstrap CI excludes zero",
+    "same sign in QQQ and SPY",
+    "same sign in at least two of three years",
+    "annual concentration <= 50%",
+    "same sign in a nearby horizon",
+    "BH q-value <= 0.10"
+  ],
+  "diagnostic_classification": "hypothesis_generating_signal",
+  "economic_threshold": "not_applicable_non_strategy_no_pnl_no_cost_model",
+  "hypothesis_id": "HYP-FCR-EVENT-01",
+  "multiple_comparisons": {
+    "audit_overlay": "Benjamini-Hochberg FDR on symbol-level event/orientation/horizon bootstrap p-values",
+    "decision_use": "diagnostic_only_not_strategy_approval",
+    "family_size": 100,
+    "preregistered_method": "not explicitly specified in preregistration",
+    "q_threshold": 0.1
+  },
+  "persisted_classification": "hypothesis_generating_signal"
+}

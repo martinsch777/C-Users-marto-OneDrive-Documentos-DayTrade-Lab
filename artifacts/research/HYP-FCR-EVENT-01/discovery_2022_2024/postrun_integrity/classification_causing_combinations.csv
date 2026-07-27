@@ -1,0 +1,7 @@
+event_type,orientation,horizon
+EVENT-07,long_reversal,15min
+EVENT-07,long_reversal,30min
+EVENT-07,long_reversal,5min
+EVENT-08,short_reversal,15min
+EVENT-08,short_reversal,30min
+EVENT-08,short_reversal,60min

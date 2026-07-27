@@ -1,0 +1,122 @@
+schema_version: 1
+hypothesis_id: HYP-FCR-EVENT-01
+name: Opening Range Sweep and Post-Event Path Study
+status: PREREGISTERED_NOT_RUN
+created_at: "2026-07-23"
+type: event_study
+strategy_status: non_strategy
+research_use: hypothesis_generating
+paper_eligible: false
+live_eligible: false
+validation_2025_eligible: false
+canonical_payload_hash: 1b6ad06b974d996cdf6bd0a3a21eae097e94322e80fdec94c2cfc4ec3c18fe81
+research_question: After first-candle Opening Range touches, sweeps, or FVG events, what is the non-decisional path distribution by event type and horizon?
+symbols:
+  - QQQ
+  - SPY
+timeframe:
+  source: 1min
+  research: 5min
+session:
+  calendar: US_EQUITY_RTH
+  timezone: America/New_York
+  regular_hours: "09:30-16:00"
+  opening_range: "09:30-10:00"
+  observation_window: "10:00-16:00"
+data_sources:
+  provider: local_curated_only
+  use_approved_manifests: true
+  downloads_allowed: false
+  api_calls_allowed: false
+periods:
+  discovery_2022_2024:
+    start: "2022-01-01"
+    end: "2024-12-31"
+    status: preregistered_prepare_only_not_executed
+  validation_2025:
+    start: "2025-01-01"
+    end: "2025-12-31"
+    status: blocked_not_opened
+  parity_debug_2026:
+    start: "2026-01-01"
+    end: "2026-12-31"
+    status: blocked_not_opened
+event_definitions:
+  EVENT-01: first_touch_of_opening_range_low_after_10_00
+  EVENT-02: first_strict_break_of_opening_range_low_by_at_least_one_tick
+  EVENT-03: first_touch_of_opening_range_high_after_10_00
+  EVENT-04: first_strict_break_of_opening_range_high_by_at_least_one_tick
+  EVENT-05: latest_low_sweep_followed_by_bullish_fvg_and_close_back_inside_range_within_three_bars
+  EVENT-06: latest_high_sweep_followed_by_bearish_fvg_and_close_back_inside_range_within_three_bars
+  EVENT-07: low_sweep_without_bullish_fvg_confirmation_in_next_three_bars
+  EVENT-08: high_sweep_without_bearish_fvg_confirmation_in_next_three_bars
+  EVENT-09: bullish_fvg_inside_opening_range_without_prior_low_sweep
+  EVENT-10: bearish_fvg_inside_opening_range_without_prior_high_sweep
+event_constraints:
+  maximum_events_per_type_per_symbol_session: 1
+  event_05_06_use_latest_valid_sweep: true
+  no_entries: true
+  no_exits: true
+  no_stops: true
+  no_targets: true
+  no_position_sizing: true
+  no_pnl: true
+horizons:
+  - 5min
+  - 15min
+  - 30min
+  - 60min
+  - session_close
+path_metrics:
+  - raw_return
+  - reversal_return
+  - continuation_return
+  - maximum_favorable_excursion
+  - maximum_adverse_excursion
+  - time_to_mfe
+  - time_to_mae
+  - returned_to_or_center
+  - reached_opposite_or_extreme
+  - broke_same_or_extreme
+normalizations:
+  - opening_range_width
+  - atr_14
+  - sweep_depth_ticks
+  - fvg_size_ticks
+  - gap_direction
+aggregation:
+  group_by:
+    - event_type
+    - horizon
+    - symbol
+    - year
+    - direction_orientation
+  bootstrap_by_session: true
+runner:
+  mode: prepare_only
+  event_study_execution_allowed: false
+  results_document_allowed: false
+allowed_classifications:
+  - preregistered_not_run
+  - exploratory_only_after_future_approved_execution
+blocked_transitions:
+  - candidate_strategy
+  - validation_2025
+  - parity_debug_2026
+  - paper
+  - live
+safety_flags:
+  live_trading: false
+  broker_connected: false
+  orders_sent: false
+  paper_broker_enabled: false
+restrictions:
+  run_event_study_now: false
+  optimize_parameters: false
+  change_fcr_01_rules: false
+  create_fcr_05: false
+  use_2025: false
+  use_2026: false
+  download_data: false
+  call_alpaca: false
+  commit_or_push: false

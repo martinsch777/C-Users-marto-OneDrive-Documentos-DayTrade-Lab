@@ -1,0 +1,76 @@
+{
+  "by_candidate_path": "artifacts\\research\\HYP-FCR-EVENT-01\\discovery_2022_2024\\postrun_integrity\\economic_threshold_by_candidate.csv",
+  "candidate_combinations": [
+    {
+      "event_type": "EVENT-07",
+      "horizon": "5min",
+      "orientation": "long_reversal"
+    },
+    {
+      "event_type": "EVENT-07",
+      "horizon": "15min",
+      "orientation": "long_reversal"
+    },
+    {
+      "event_type": "EVENT-07",
+      "horizon": "30min",
+      "orientation": "long_reversal"
+    },
+    {
+      "event_type": "EVENT-08",
+      "horizon": "15min",
+      "orientation": "short_reversal"
+    },
+    {
+      "event_type": "EVENT-08",
+      "horizon": "30min",
+      "orientation": "short_reversal"
+    },
+    {
+      "event_type": "EVENT-08",
+      "horizon": "60min",
+      "orientation": "short_reversal"
+    }
+  ],
+  "candidate_combinations_audited": 6,
+  "candidate_combinations_passing_all_preregistered_criteria": 0,
+  "candidate_combinations_stable": 6,
+  "classification_reason": "Stable diagnostic effects exist, but HYP-FCR-EVENT-01 did not preregister an economic threshold or cost model; hypothesis_generating_signal cannot be retained under the economic-threshold requirement.",
+  "economic_rule": {
+    "ambiguity": false,
+    "baseline_applicable": false,
+    "baseline_commission_rate_per_side": null,
+    "baseline_slippage_ticks_per_execution": null,
+    "multiple_comparison_method": null,
+    "notes": [
+      "YAML contains one-tick language only inside EVENT-02/EVENT-04 strict-break definitions.",
+      "Preregistration document contains one-tick language only inside event definitions.",
+      "No two-tick, baseline-friction, stress-friction, or economic-threshold rule is defined for HYP-FCR-EVENT-01.",
+      "Persisted economic_threshold_comparison.csv marks economic thresholds as not applicable because this is a non-strategy event study with no PnL/cost model.",
+      "The 0.01 tick size is the audited operational tick size of the event-study tool, not an economic approval threshold."
+    ],
+    "required_threshold_name": null,
+    "status": "no_economic_threshold_preregistered",
+    "stress_applicable": false,
+    "stress_commission_rate_per_side": null,
+    "stress_slippage_ticks_per_execution": null,
+    "threshold_required_for_hypothesis_generating": false,
+    "tick_size": 0.01
+  },
+  "final_classification": "stable_but_not_economic",
+  "final_status": "event_study_completed_stable_not_economic",
+  "hypothesis_id": "HYP-FCR-EVENT-01",
+  "live_eligible": false,
+  "multiple_comparisons": {
+    "decision": "No formal corrected-significance claim is made; consistency criteria are descriptive.",
+    "formal_correction_applied": false,
+    "preregistered_method": null,
+    "reason": "No exact multiple-comparisons method is specified in YAML or preregistration documentation."
+  },
+  "orders_sent": false,
+  "paper_eligible": false,
+  "position_sizing_used": false,
+  "strategy_created": false,
+  "total_event_orientation_horizon_combinations_evaluated": 50,
+  "validation_2025_unlocked": false
+}

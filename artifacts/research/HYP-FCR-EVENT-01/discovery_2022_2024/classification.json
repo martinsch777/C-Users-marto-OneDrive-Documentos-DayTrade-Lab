@@ -1,0 +1,14 @@
+{
+  "allowed_classifications": [
+    "hypothesis_generating_signal",
+    "no_effect_detected",
+    "stable_but_not_economic",
+    "weak_unstable_effect"
+  ],
+  "classification": "hypothesis_generating_signal",
+  "hypothesis_id": "HYP-FCR-EVENT-01",
+  "live_enabled": false,
+  "paper_enabled": false,
+  "strategy_created": false,
+  "validation_2025_unlocked": false
+}

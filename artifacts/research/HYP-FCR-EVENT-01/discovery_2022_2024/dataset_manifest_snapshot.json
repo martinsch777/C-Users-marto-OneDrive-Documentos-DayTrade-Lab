@@ -1,0 +1,133 @@
+{
+  "QQQ": {
+    "analytic_frame": {
+      "bars_5m": 58482,
+      "contains_2025_or_2026": false,
+      "effective_end": "2024-12-31",
+      "effective_start": "2022-01-03",
+      "requested_end": "2024-12-31",
+      "requested_start": "2022-01-01",
+      "rows_1m": 292410,
+      "session_count": 753
+    },
+    "dataset_path": "data\\curated\\QQQ_1min_2022-01-01_2026-07-06_curated.csv",
+    "manifest": {
+      "adjustment": "raw",
+      "asset_class": "equity",
+      "audit_apt_for_or_fvg_backtest": true,
+      "audit_critical_warnings": [],
+      "audit_warnings": [],
+      "broker_connected": false,
+      "calendar_early_closes_loaded": 118,
+      "calendar_holidays_loaded": 438,
+      "calendar_loaded": true,
+      "calendar_source": "builtin_us_equity_calendar_v1",
+      "created_at": "2026-07-08T21:22:59.211878+00:00",
+      "curated_file": "data\\curated\\QQQ_1min_2022-01-01_2026-07-06_curated.csv",
+      "dataset_status": "approved_for_or_fvg_backtest",
+      "end": "2026-07-06",
+      "excluded_sessions": [],
+      "feed": "sip",
+      "first_timestamp": "2022-01-03 09:30:00-05:00",
+      "input_file": "data\\curated\\QQQ_1min_2022-01-01_2026-07-06_curated.csv",
+      "last_timestamp": "2026-07-06 15:59:00-04:00",
+      "live_trading_enabled": false,
+      "orders_sent": false,
+      "output_file": "data\\curated\\QQQ_1min_2022-01-01_2026-07-06_curated.csv",
+      "paper_broker_enabled": false,
+      "project_safety_state": {
+        "broker_connected": false,
+        "live_trading": false,
+        "orders_sent": false
+      },
+      "provider": "alpaca",
+      "raw_input_file": "data\\raw\\QQQ_1min_2022-01-01_2026-07-06_alpaca_sip_raw_rth.csv",
+      "rows": 438330,
+      "rows_input": 438330,
+      "rows_output": 438330,
+      "rows_removed": 0,
+      "rth_only": true,
+      "sha256": "2e9fd658e31c698f79bb5bcfcc7077a25e2c7b245d5b5d5f1fc3a158e7931fe4",
+      "source_timezone": "America/New_York",
+      "start": "2022-01-01",
+      "symbol": "QQQ",
+      "timeframe": "1min",
+      "total_excluded_sessions": 0
+    },
+    "manifest_path": "data\\manifests\\QQQ_1min_2022-01-01_2026-07-06_curated_manifest.json"
+  },
+  "SPY": {
+    "analytic_frame": {
+      "bars_5m": 58404,
+      "contains_2025_or_2026": false,
+      "effective_end": "2024-12-31",
+      "effective_start": "2022-01-03",
+      "requested_end": "2024-12-31",
+      "requested_start": "2022-01-01",
+      "rows_1m": 292020,
+      "session_count": 752
+    },
+    "dataset_path": "data\\curated\\SPY_1min_2022-01-01_2026-07-06_curated.csv",
+    "manifest": {
+      "adjustment": "raw",
+      "asset_class": "equity",
+      "audit_apt_for_or_fvg_backtest": true,
+      "audit_critical_warnings": [],
+      "audit_warnings": [],
+      "broker_connected": false,
+      "calendar_early_closes_loaded": 118,
+      "calendar_holidays_loaded": 438,
+      "calendar_loaded": true,
+      "calendar_source": "builtin_us_equity_calendar_v1",
+      "created_at": "2026-07-08T21:24:38.122380+00:00",
+      "curated_file": "data\\curated\\SPY_1min_2022-01-01_2026-07-06_curated.csv",
+      "dataset_status": "approved_for_or_fvg_backtest",
+      "end": "2026-07-06",
+      "excluded_sessions": [
+        {
+          "bars_removed": 386,
+          "created_by": "data_quality_audit",
+          "date": "2023-06-05",
+          "expected_bars": 390,
+          "missing_timestamps": [
+            "2023-06-05 09:52:00-04:00",
+            "2023-06-05 09:53:00-04:00",
+            "2023-06-05 09:54:00-04:00",
+            "2023-06-05 09:55:00-04:00"
+          ],
+          "policy": "exclude_entire_session",
+          "reason": "MISSING_RTH_BARS_FROM_PROVIDER",
+          "source": "alpaca_sip_raw_rth",
+          "symbol": "SPY"
+        }
+      ],
+      "feed": "sip",
+      "first_timestamp": "2022-01-03 09:30:00-05:00",
+      "input_file": "data\\curated\\SPY_1min_2022-01-01_2026-07-06_curated.csv",
+      "last_timestamp": "2026-07-06 15:59:00-04:00",
+      "live_trading_enabled": false,
+      "orders_sent": false,
+      "output_file": "data\\curated\\SPY_1min_2022-01-01_2026-07-06_curated.csv",
+      "paper_broker_enabled": false,
+      "project_safety_state": {
+        "broker_connected": false,
+        "live_trading": false,
+        "orders_sent": false
+      },
+      "provider": "alpaca",
+      "raw_input_file": "data\\raw\\SPY_1min_2022-01-01_2026-07-06_alpaca_sip_raw_rth.csv",
+      "rows": 437940,
+      "rows_input": 438326,
+      "rows_output": 437940,
+      "rows_removed": 386,
+      "rth_only": true,
+      "sha256": "4c28001891013c098a5e1c8050c4a8b539b53756410b6d0502ab4aa18569e787",
+      "source_timezone": "America/New_York",
+      "start": "2022-01-01",
+      "symbol": "SPY",
+      "timeframe": "1min",
+      "total_excluded_sessions": 1
+    },
+    "manifest_path": "data\\manifests\\SPY_1min_2022-01-01_2026-07-06_curated_manifest.json"
+  }
+}

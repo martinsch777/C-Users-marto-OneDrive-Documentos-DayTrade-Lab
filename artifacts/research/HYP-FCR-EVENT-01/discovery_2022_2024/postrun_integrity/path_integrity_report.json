@@ -1,0 +1,22 @@
+{
+  "availability_status_values": [
+    "available",
+    "unavailable"
+  ],
+  "available_invalid_rows": 0,
+  "blocked_2025_2026_rows": 0,
+  "event_type_mismatch_rows": 0,
+  "every_event_has_five_horizons": true,
+  "expected_event_ids": 8498,
+  "expected_rows": 42490,
+  "hypothesis_id": "HYP-FCR-EVENT-01",
+  "integrity_passed": true,
+  "invalid_infinity_count": 0,
+  "orphan_path_rows": 0,
+  "overnight_event_time_rows": 0,
+  "symbol_mismatch_rows": 0,
+  "total_matches_expected": true,
+  "total_rows": 42490,
+  "unavailable_invalid_rows": 0,
+  "unique_derived_event_ids": 8498
+}

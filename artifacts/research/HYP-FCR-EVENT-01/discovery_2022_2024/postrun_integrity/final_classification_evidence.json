@@ -1,0 +1,17 @@
+{
+  "candidate_combinations_passing_all_preregistered_criteria": 0,
+  "candidate_combinations_stable": 6,
+  "canonical_payload_hash": "1b6ad06b974d996cdf6bd0a3a21eae097e94322e80fdec94c2cfc4ec3c18fe81",
+  "economic_threshold_audit_path": "artifacts\\research\\HYP-FCR-EVENT-01\\discovery_2022_2024\\postrun_integrity\\economic_threshold_audit.json",
+  "final_classification": "stable_but_not_economic",
+  "final_status": "event_study_completed_stable_not_economic",
+  "hypothesis_id": "HYP-FCR-EVENT-01",
+  "live_eligible": false,
+  "orders_sent": false,
+  "original_classification_json_preserved": true,
+  "paper_eligible": false,
+  "position_sizing_used": false,
+  "source_classification_json_modified": false,
+  "strategy_created": false,
+  "validation_2025_unlocked": false
+}

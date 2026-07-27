@@ -1,0 +1,80 @@
+{
+  "analytic_frame_rows": {
+    "QQQ": {
+      "bars_5m": 58482,
+      "contains_2025_or_2026": false,
+      "effective_end": "2024-12-31",
+      "effective_start": "2022-01-03",
+      "requested_end": "2024-12-31",
+      "requested_start": "2022-01-01",
+      "rows_1m": 292410,
+      "session_count": 753
+    },
+    "SPY": {
+      "bars_5m": 58404,
+      "contains_2025_or_2026": false,
+      "effective_end": "2024-12-31",
+      "effective_start": "2022-01-03",
+      "requested_end": "2024-12-31",
+      "requested_start": "2022-01-01",
+      "rows_1m": 292020,
+      "session_count": 752
+    }
+  },
+  "benchmark_only": false,
+  "bootstrap_grouped_by": "session_date",
+  "bootstrap_seed": 17,
+  "broker_connected": false,
+  "canonical_payload_hash": "1b6ad06b974d996cdf6bd0a3a21eae097e94322e80fdec94c2cfc4ec3c18fe81",
+  "classification": "hypothesis_generating_signal",
+  "documentation_updated": false,
+  "event_study_executed": true,
+  "event_types_executed": [
+    "EVENT-01",
+    "EVENT-02",
+    "EVENT-03",
+    "EVENT-04",
+    "EVENT-05",
+    "EVENT-06",
+    "EVENT-07",
+    "EVENT-08",
+    "EVENT-09",
+    "EVENT-10"
+  ],
+  "head_commit": "d7af910b113ab4481f76b3cdb715bd1609d1fd70",
+  "holdout_executed": false,
+  "horizons": [
+    "5min",
+    "15min",
+    "30min",
+    "60min",
+    "session_close"
+  ],
+  "hypothesis_id": "HYP-FCR-EVENT-01",
+  "live_eligible": false,
+  "live_trading": false,
+  "mode": "run_discovery",
+  "orders_sent": false,
+  "paper_broker_enabled": false,
+  "paper_eligible": false,
+  "parity_2026_executed": false,
+  "period": "discovery_2022_2024",
+  "position_sizing_used": false,
+  "preflight_passed": true,
+  "registry_updated": false,
+  "requested_end": "2024-12-31",
+  "requested_start": "2022-01-01",
+  "results_written": true,
+  "safety_flags": {
+    "broker_connected": false,
+    "live_trading": false,
+    "orders_sent": false,
+    "paper_broker_enabled": false
+  },
+  "symbols": [
+    "QQQ",
+    "SPY"
+  ],
+  "validation_2025_executed": false,
+  "validation_2025_unlocked": false
+}

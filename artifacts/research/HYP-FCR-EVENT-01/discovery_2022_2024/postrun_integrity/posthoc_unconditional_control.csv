@@ -1,0 +1,2 @@
+analysis_label,status,reason,event_mean_return,unconditional_mean_return,incremental_return,bootstrap_ci_low,bootstrap_ci_high,classification_impact,strategy_approval_allowed
+posthoc_non_decisional,not_executed_requires_historical_ohlc_reopen,Unconditional same-symbol/year/hour/horizon returns require sessions without the event; events.csv/path_metrics.csv are insufficient.,,,,,,none,False

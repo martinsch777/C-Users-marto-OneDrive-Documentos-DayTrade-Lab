@@ -1,0 +1,24 @@
+{
+  "aggregate_reconciliation_passed": true,
+  "canonical_payload_hash": "1b6ad06b974d996cdf6bd0a3a21eae097e94322e80fdec94c2cfc4ec3c18fe81",
+  "classification_audit_status": "passed",
+  "economic_threshold_audit_status": "no_economic_threshold_preregistered",
+  "event_07_08_audit": {
+    "algebra_failure_rows": 0,
+    "continuation_is_negative_reversal": true,
+    "diagnostics_path": "artifacts\\research\\HYP-FCR-EVENT-01\\discovery_2022_2024\\postrun_integrity\\event_07_08_diagnostics.csv",
+    "event_07_08_causing_classification_rows": 15,
+    "event_07_08_rows": 60
+  },
+  "event_integrity_passed": true,
+  "final_classification": "stable_but_not_economic",
+  "final_status": "event_study_completed_stable_not_economic",
+  "hypothesis_id": "HYP-FCR-EVENT-01",
+  "live_eligible": false,
+  "orders_sent": false,
+  "paper_eligible": false,
+  "path_integrity_passed": true,
+  "position_sizing_used": false,
+  "strategy_created": false,
+  "validation_2025_unlocked": false
+}
