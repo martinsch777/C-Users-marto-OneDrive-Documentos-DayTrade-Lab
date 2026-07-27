@@ -524,6 +524,68 @@ def _horizon_delta(horizon: str) -> pd.Timedelta | None:
     return pd.Timedelta(value=int(horizon[:-3]), unit="min")
 
 
+def _unavailable_event_path_record(
+    event: dict[str, Any],
+    *,
+    event_time: pd.Timestamp,
+    event_close: float,
+    horizon: str,
+) -> dict[str, Any]:
+    side = str(event["event_side"])
+    return {
+        "hypothesis_id": str(event.get("hypothesis_id", HYPOTHESIS_ID)),
+        "symbol": str(event["symbol"]),
+        "session_date": str(event["session_date"]),
+        "year": int(event.get("year", event_time.year)),
+        "event_type": str(event["event_type"]),
+        "event_side": side,
+        "orientation": "long_reversal" if side == "low" else "short_reversal",
+        "event_time": event_time,
+        "horizon": horizon,
+        "event_price": event_close,
+        "availability_status": "unavailable",
+        "future_close": np.nan,
+        "horizon_close": np.nan,
+        "raw_return": np.nan,
+        "future_return": np.nan,
+        "reversal_return": np.nan,
+        "continuation_return": np.nan,
+        "maximum_favorable_excursion": np.nan,
+        "MFE": np.nan,
+        "maximum_adverse_excursion": np.nan,
+        "MAE": np.nan,
+        "time_to_mfe": pd.NaT,
+        "time_to_MFE": pd.NaT,
+        "time_to_mae": pd.NaT,
+        "time_to_MAE": pd.NaT,
+        "path_high": np.nan,
+        "path_low": np.nan,
+        "returned_to_or_center": False,
+        "return_to_OR_midpoint": False,
+        "reached_opposite_or_extreme": False,
+        "reached_opposite_OR_extreme": False,
+        "broke_same_or_extreme": False,
+        "rebreak_same_extreme": False,
+        "bars_in_path": 0,
+    }
+
+
+def _build_session_path_cache(five_minute: pd.DataFrame, config: FcrEventStudyConfig) -> dict[str, dict[str, Any]]:
+    data = add_session_columns(five_minute, config.first_candle_config()).sort_values("timestamp").reset_index(drop=True)
+    cache: dict[str, dict[str, Any]] = {}
+    for session_date, session in data.groupby("session_date", sort=True):
+        session = session.reset_index(drop=True)
+        timestamps = [pd.Timestamp(value) for value in session["timestamp"].tolist()]
+        cache[str(session_date)] = {
+            "timestamps": timestamps,
+            "timestamp_positions": {timestamp: position for position, timestamp in enumerate(timestamps)},
+            "high": session["high"].to_numpy(dtype=float, copy=False),
+            "low": session["low"].to_numpy(dtype=float, copy=False),
+            "close": session["close"].to_numpy(dtype=float, copy=False),
+        }
+    return cache
+
+
 def compute_fcr_event_paths(
     five_minute: pd.DataFrame,
     events: pd.DataFrame,
@@ -535,94 +597,80 @@ def compute_fcr_event_paths(
     horizons = horizons or config.horizons
     if events.empty:
         return pd.DataFrame()
-    data = add_session_columns(five_minute, config.first_candle_config()).sort_values("timestamp").reset_index(drop=True)
-    event_data = events.copy()
+    session_cache = _build_session_path_cache(five_minute, config)
+    horizon_deltas = {horizon: _horizon_delta(horizon) for horizon in horizons}
     rows: list[dict[str, Any]] = []
 
-    for _, event in event_data.iterrows():
-        session = data.loc[data["session_date"] == str(event["session_date"])].reset_index(drop=True)
-        event_time = pd.Timestamp(event["event_time"])
-        event_positions = session.index[session["timestamp"] == event_time].tolist()
-        if not event_positions:
+    for event in events.to_dict("records"):
+        session = session_cache.get(str(event["session_date"]))
+        if session is None:
             continue
-        event_position = int(event_positions[0])
-        event_close = float(session.loc[event_position, "close"])
-        for horizon in horizons:
-            delta = _horizon_delta(horizon)
-            unavailable_record = {
-                "hypothesis_id": str(event.get("hypothesis_id", HYPOTHESIS_ID)),
-                "symbol": str(event["symbol"]),
-                "session_date": str(event["session_date"]),
-                "year": int(event.get("year", event_time.year)),
-                "event_type": str(event["event_type"]),
-                "event_side": str(event["event_side"]),
-                "orientation": "long_reversal" if str(event["event_side"]) == "low" else "short_reversal",
-                "event_time": event_time,
-                "horizon": horizon,
-                "event_price": event_close,
-                "availability_status": "unavailable",
-                "future_close": np.nan,
-                "horizon_close": np.nan,
-                "raw_return": np.nan,
-                "future_return": np.nan,
-                "reversal_return": np.nan,
-                "continuation_return": np.nan,
-                "maximum_favorable_excursion": np.nan,
-                "MFE": np.nan,
-                "maximum_adverse_excursion": np.nan,
-                "MAE": np.nan,
-                "time_to_mfe": pd.NaT,
-                "time_to_MFE": pd.NaT,
-                "time_to_mae": pd.NaT,
-                "time_to_MAE": pd.NaT,
-                "path_high": np.nan,
-                "path_low": np.nan,
-                "returned_to_or_center": False,
-                "return_to_OR_midpoint": False,
-                "reached_opposite_or_extreme": False,
-                "reached_opposite_OR_extreme": False,
-                "broke_same_or_extreme": False,
-                "rebreak_same_extreme": False,
-                "bars_in_path": 0,
-            }
+        event_time = pd.Timestamp(event["event_time"])
+        event_position = session["timestamp_positions"].get(event_time)
+        if event_position is None:
+            continue
+        event_position = int(event_position)
+        timestamps = session["timestamps"]
+        high_values = session["high"]
+        low_values = session["low"]
+        close_values = session["close"]
+        event_close = float(close_values[event_position])
+        for horizon, delta in horizon_deltas.items():
             if delta is None:
-                horizon_position = len(session) - 1
+                horizon_position = len(timestamps) - 1
             else:
                 target = event_time + delta
-                candidates = session.index[session["timestamp"] == target].tolist()
-                if not candidates:
-                    rows.append(unavailable_record)
+                horizon_position = session["timestamp_positions"].get(target)
+                if horizon_position is None:
+                    rows.append(
+                        _unavailable_event_path_record(
+                            event,
+                            event_time=event_time,
+                            event_close=event_close,
+                            horizon=horizon,
+                        )
+                    )
                     continue
-                horizon_position = int(candidates[0])
+                horizon_position = int(horizon_position)
             if horizon_position <= event_position:
-                rows.append(unavailable_record)
+                rows.append(
+                    _unavailable_event_path_record(
+                        event,
+                        event_time=event_time,
+                        event_close=event_close,
+                        horizon=horizon,
+                    )
+                )
                 continue
-            path = session.iloc[event_position + 1 : horizon_position + 1]
-            future_close = float(session.loc[horizon_position, "close"])
+            path_start = event_position + 1
+            path_stop = horizon_position + 1
+            path_high_values = high_values[path_start:path_stop]
+            path_low_values = low_values[path_start:path_stop]
+            future_close = float(close_values[horizon_position])
             raw_return = future_close / event_close - 1.0
             side = str(event["event_side"])
-            high_path = path["high"].astype(float)
-            low_path = path["low"].astype(float)
+            path_high = float(path_high_values.max())
+            path_low = float(path_low_values.min())
             if side == "low":
                 reversal_return = raw_return
                 continuation_return = -raw_return
-                mfe = high_path.max() / event_close - 1.0
-                mae = low_path.min() / event_close - 1.0
-                time_to_mfe = pd.Timestamp(path.loc[high_path.idxmax(), "timestamp"])
-                time_to_mae = pd.Timestamp(path.loc[low_path.idxmin(), "timestamp"])
-                returned_center = bool(high_path.max() >= float(event["opening_midpoint"]))
-                reached_opposite = bool(high_path.max() >= float(event["opening_high"]))
-                broke_same = bool(low_path.min() < float(event["opening_low"]))
+                mfe = path_high / event_close - 1.0
+                mae = path_low / event_close - 1.0
+                time_to_mfe = timestamps[path_start + int(np.argmax(path_high_values))]
+                time_to_mae = timestamps[path_start + int(np.argmin(path_low_values))]
+                returned_center = bool(path_high >= float(event["opening_midpoint"]))
+                reached_opposite = bool(path_high >= float(event["opening_high"]))
+                broke_same = bool(path_low < float(event["opening_low"]))
             else:
                 reversal_return = -raw_return
                 continuation_return = raw_return
-                mfe = event_close / low_path.min() - 1.0
-                mae = 1.0 - event_close / high_path.max()
-                time_to_mfe = pd.Timestamp(path.loc[low_path.idxmin(), "timestamp"])
-                time_to_mae = pd.Timestamp(path.loc[high_path.idxmax(), "timestamp"])
-                returned_center = bool(low_path.min() <= float(event["opening_midpoint"]))
-                reached_opposite = bool(low_path.min() <= float(event["opening_low"]))
-                broke_same = bool(high_path.max() > float(event["opening_high"]))
+                mfe = event_close / path_low - 1.0
+                mae = 1.0 - event_close / path_high
+                time_to_mfe = timestamps[path_start + int(np.argmin(path_low_values))]
+                time_to_mae = timestamps[path_start + int(np.argmax(path_high_values))]
+                returned_center = bool(path_low <= float(event["opening_midpoint"]))
+                reached_opposite = bool(path_low <= float(event["opening_low"]))
+                broke_same = bool(path_high > float(event["opening_high"]))
             rows.append(
                 {
                     "hypothesis_id": str(event.get("hypothesis_id", HYPOTHESIS_ID)),
@@ -650,15 +698,15 @@ def compute_fcr_event_paths(
                     "time_to_MFE": time_to_mfe,
                     "time_to_mae": time_to_mae,
                     "time_to_MAE": time_to_mae,
-                    "path_high": float(high_path.max()),
-                    "path_low": float(low_path.min()),
+                    "path_high": path_high,
+                    "path_low": path_low,
                     "returned_to_or_center": returned_center,
                     "return_to_OR_midpoint": returned_center,
                     "reached_opposite_or_extreme": reached_opposite,
                     "reached_opposite_OR_extreme": reached_opposite,
                     "broke_same_or_extreme": broke_same,
                     "rebreak_same_extreme": broke_same,
-                    "bars_in_path": int(len(path)),
+                    "bars_in_path": int(path_stop - path_start),
                 }
             )
     return pd.DataFrame(rows).sort_values(["event_time", "event_type", "horizon"]).reset_index(drop=True)
@@ -671,16 +719,20 @@ def bootstrap_mean_by_session(
     n_bootstrap: int = 500,
     seed: int = 17,
 ) -> tuple[float, float]:
-    available = frame.loc[frame[value_column].notna()].copy()
+    available = frame.loc[frame[value_column].notna(), ["session_date", value_column]]
     if available.empty:
         return np.nan, np.nan
-    sessions = np.array(sorted(available["session_date"].astype(str).unique()))
+    session_stats = available.assign(session_date=available["session_date"].astype(str)).groupby(
+        "session_date", sort=True
+    )[value_column].agg(["sum", "count"])
+    session_sums = session_stats["sum"].to_numpy(dtype=float, copy=False)
+    session_counts = session_stats["count"].to_numpy(dtype=float, copy=False)
     rng = np.random.default_rng(seed)
-    sampled_means: list[float] = []
-    for _ in range(n_bootstrap):
-        sampled_sessions = rng.choice(sessions, size=len(sessions), replace=True)
-        sample = pd.concat([available.loc[available["session_date"].astype(str) == item] for item in sampled_sessions])
-        sampled_means.append(float(sample[value_column].mean()))
+    session_count = len(session_stats)
+    sampled_means = np.empty(n_bootstrap, dtype=float)
+    for index in range(n_bootstrap):
+        sampled_indices = rng.choice(session_count, size=session_count, replace=True)
+        sampled_means[index] = float(session_sums[sampled_indices].sum() / session_counts[sampled_indices].sum())
     return float(np.percentile(sampled_means, 2.5)), float(np.percentile(sampled_means, 97.5))
 
 
@@ -690,6 +742,7 @@ def aggregate_fcr_event_paths(
     group_by: tuple[str, ...] = ("event_type", "horizon"),
     n_bootstrap: int = 500,
     seed: int = 17,
+    include_bootstrap: bool = True,
 ) -> pd.DataFrame:
     if paths.empty:
         return pd.DataFrame()
@@ -698,12 +751,15 @@ def aggregate_fcr_event_paths(
         if not isinstance(key, tuple):
             key = (key,)
         available = group.loc[group["reversal_return"].notna()].copy()
-        ci_low, ci_high = bootstrap_mean_by_session(
-            group,
-            value_column="reversal_return",
-            n_bootstrap=n_bootstrap,
-            seed=seed,
-        )
+        if include_bootstrap:
+            ci_low, ci_high = bootstrap_mean_by_session(
+                group,
+                value_column="reversal_return",
+                n_bootstrap=n_bootstrap,
+                seed=seed,
+            )
+        else:
+            ci_low, ci_high = np.nan, np.nan
         record = {column: value for column, value in zip(group_by, key)}
         record.update(
             {
@@ -721,14 +777,48 @@ def aggregate_fcr_event_paths(
                 "median_mfe": float(available["maximum_favorable_excursion"].median()) if not available.empty else np.nan,
                 "mean_mae": float(available["maximum_adverse_excursion"].mean()) if not available.empty else np.nan,
                 "median_mae": float(available["maximum_adverse_excursion"].median()) if not available.empty else np.nan,
-                "bootstrap_reversal_mean_ci_low": ci_low,
-                "bootstrap_reversal_mean_ci_high": ci_high,
+                "bootstrap_reversal_mean_ci_low": ci_low if include_bootstrap else np.nan,
+                "bootstrap_reversal_mean_ci_high": ci_high if include_bootstrap else np.nan,
                 "bootstrap_grouped_by": "session_date",
                 "bootstrap_seed": int(seed),
             }
         )
         rows.append(record)
     return pd.DataFrame(rows)
+
+
+def attach_bootstrap_intervals(
+    aggregates: pd.DataFrame,
+    paths: pd.DataFrame,
+    *,
+    group_by: tuple[str, ...],
+    n_bootstrap: int = 500,
+    seed: int = 17,
+) -> pd.DataFrame:
+    if aggregates.empty or paths.empty:
+        return aggregates
+    rows: list[dict[str, Any]] = []
+    for key, group in paths.groupby(list(group_by), sort=True):
+        if not isinstance(key, tuple):
+            key = (key,)
+        ci_low, ci_high = bootstrap_mean_by_session(
+            group,
+            value_column="reversal_return",
+            n_bootstrap=n_bootstrap,
+            seed=seed,
+        )
+        record = {column: value for column, value in zip(group_by, key)}
+        record["bootstrap_reversal_mean_ci_low"] = ci_low
+        record["bootstrap_reversal_mean_ci_high"] = ci_high
+        rows.append(record)
+    intervals = pd.DataFrame(rows)
+    merged = aggregates.drop(
+        columns=["bootstrap_reversal_mean_ci_low", "bootstrap_reversal_mean_ci_high"],
+        errors="ignore",
+    ).merge(intervals, on=list(group_by), how="left")
+    merged["bootstrap_grouped_by"] = "session_date"
+    merged["bootstrap_seed"] = int(seed)
+    return merged.loc[:, aggregates.columns]
 
 
 def validate_event_study_period(period: str) -> None:

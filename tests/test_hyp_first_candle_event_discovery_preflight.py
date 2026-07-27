@@ -15,10 +15,12 @@ from src.research.hyp_first_candle_event_discovery import (
     ALLOWED_CLASSIFICATIONS,
     EXPECTED_SYMBOLS,
     REQUIRED_OUTPUT_FILES,
+    ExecutionProgress,
     FcrEventDiscoveryRequest,
     RuntimeState,
     filter_discovery_analytic_frame,
     prepare_only_manifest,
+    run_profile_synthetic,
     run_operational_discovery,
     validate_discovery_preflight,
 )
@@ -426,6 +428,7 @@ class HypFirstCandleEventDiscoveryPreflightTests(unittest.TestCase):
                 runtime_state=RuntimeState(HEAD, True),
                 dataset_loader=self.fake_loader,
                 n_bootstrap=10,
+                progress=ExecutionProgress(emit_console=False),
             )
 
     def test_23_run_discovery_calls_engine_only_after_preflight_pass(self):
@@ -434,7 +437,7 @@ class HypFirstCandleEventDiscoveryPreflightTests(unittest.TestCase):
             request = self.make_request(root)
             executor = Mock(return_value={"results_written": True, "output_dir": str(root / "out"), "required_outputs": [], "event_count": 0, "path_metric_rows": 0})
             with patch("src.research.hyp_first_candle_event_discovery._execute_event_study_outputs", executor):
-                payload = run_operational_discovery(request, output_dir=root / "out", runtime_state=RuntimeState(HEAD, True))
+                payload = run_operational_discovery(request, output_dir=root / "out", runtime_state=RuntimeState(HEAD, True), progress=ExecutionProgress(emit_console=False))
             self.assertTrue(payload["event_study_executed"])
             executor.assert_called_once()
 
@@ -444,13 +447,13 @@ class HypFirstCandleEventDiscoveryPreflightTests(unittest.TestCase):
             request = self.make_request(root, expected_freeze_commit=OTHER_HEAD)
             loader = Mock(side_effect=AssertionError("data loader must not run"))
             with self.assertRaises(PermissionError):
-                run_operational_discovery(request, output_dir=root / "out", runtime_state=RuntimeState(HEAD, True), dataset_loader=loader)
+                run_operational_discovery(request, output_dir=root / "out", runtime_state=RuntimeState(HEAD, True), dataset_loader=loader, progress=ExecutionProgress(emit_console=False))
             loader.assert_not_called()
 
     def test_25_prepare_only_never_calls_engine(self):
         executor = Mock(side_effect=AssertionError("engine must not run"))
         with patch("src.research.hyp_first_candle_event_discovery._execute_event_study_outputs", executor):
-            payload = run_operational_discovery(FcrEventDiscoveryRequest(), runtime_state=RuntimeState(HEAD, True))
+            payload = run_operational_discovery(FcrEventDiscoveryRequest(), runtime_state=RuntimeState(HEAD, True), progress=ExecutionProgress(emit_console=False))
         self.assertFalse(payload["event_study_executed"])
         executor.assert_not_called()
 
@@ -471,6 +474,7 @@ class HypFirstCandleEventDiscoveryPreflightTests(unittest.TestCase):
                     runtime_state=RuntimeState(HEAD, True),
                     dataset_loader=self.fake_loader,
                     raise_on_error=False,
+                    progress=ExecutionProgress(emit_console=False),
                 )
             self.assertTrue(payload["event_study_executed"])
             self.assertFalse(payload["results_written"])
@@ -485,6 +489,7 @@ class HypFirstCandleEventDiscoveryPreflightTests(unittest.TestCase):
                     output_dir=root / "out",
                     runtime_state=RuntimeState(HEAD, True),
                     raise_on_error=False,
+                    progress=ExecutionProgress(emit_console=False),
                 )
             self.assertFalse(payload["results_written"])
 
@@ -499,6 +504,7 @@ class HypFirstCandleEventDiscoveryPreflightTests(unittest.TestCase):
                     runtime_state=RuntimeState(HEAD, True),
                     dataset_loader=self.fake_loader,
                     raise_on_error=False,
+                    progress=ExecutionProgress(emit_console=False),
                 )
             self.assertFalse((root / "out").exists())
 
@@ -604,13 +610,13 @@ class HypFirstCandleEventDiscoveryPreflightTests(unittest.TestCase):
             root = Path(directory)
             request = self.make_request(root)
             with patch("src.research.hyp_first_candle_event_discovery._execute_event_study_outputs", side_effect=RuntimeError("boom")):
-                run_operational_discovery(request, output_dir=root / "out", runtime_state=RuntimeState(HEAD, True), raise_on_error=False)
+                run_operational_discovery(request, output_dir=root / "out", runtime_state=RuntimeState(HEAD, True), raise_on_error=False, progress=ExecutionProgress(emit_console=False))
         self.assertEqual(registry.read_text(encoding="utf-8"), before)
 
     def test_42_prepare_only_generates_no_results_document(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            run_operational_discovery(FcrEventDiscoveryRequest(), output_dir=root / "out", runtime_state=RuntimeState(HEAD, True))
+            run_operational_discovery(FcrEventDiscoveryRequest(), output_dir=root / "out", runtime_state=RuntimeState(HEAD, True), progress=ExecutionProgress(emit_console=False))
             self.assertFalse((root / "out").exists())
 
     def test_43_successful_run_writes_exact_required_outputs(self):
@@ -618,6 +624,69 @@ class HypFirstCandleEventDiscoveryPreflightTests(unittest.TestCase):
             root = Path(directory)
             self.run_synthetic_discovery(root, root / "out")
             self.assertEqual({path.name for path in (root / "out").iterdir()}, set(REQUIRED_OUTPUT_FILES))
+
+    def test_44_execution_progress_is_persisted_as_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.run_synthetic_discovery(root, root / "out")
+            progress = json.loads((root / "out" / "execution_progress.json").read_text(encoding="utf-8"))
+            stages = {item["stage"] for item in progress["stages"]}
+            self.assertIn("preflight", stages)
+            self.assertIn("path_metrics", stages)
+            self.assertIn("bootstrap", stages)
+            self.assertTrue(all("elapsed_seconds" in item for item in progress["stages"]))
+
+    def test_45_profile_synthetic_reads_no_real_ohlc(self):
+        payload = run_profile_synthetic(base_sessions=2, n_bootstrap=20, progress=ExecutionProgress(emit_console=False))
+        self.assertTrue(payload["synthetic_only"])
+        self.assertFalse(payload["real_ohlc_read"])
+        self.assertGreater(payload["first"]["events"], 0)
+        self.assertLess(payload["growth_when_doubling_sessions"]["path_metrics_seconds"], 10)
+
+    def test_46_benchmark_subset_requires_session_cap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            request = self.make_request(Path(directory), mode="benchmark_subset", max_sessions_per_symbol=None)
+            with self.assertRaises(PermissionError):
+                validate_discovery_preflight(request, runtime_state=RuntimeState(HEAD, True))
+
+    def test_47_benchmark_subset_writes_only_diagnostic_temp_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = self.make_request(root, mode="benchmark_subset", max_sessions_per_symbol=2)
+            with patch("src.research.hyp_first_candle_event_discovery.prepare_five_minute_frame", self.fake_prepare), patch(
+                "src.research.hyp_first_candle_event_discovery.detect_fcr_event_study_events", self.fake_events
+            ), patch("src.research.hyp_first_candle_event_discovery.compute_fcr_event_paths", self.fake_paths):
+                payload = run_operational_discovery(
+                    request,
+                    output_dir=root / "out",
+                    runtime_state=RuntimeState(HEAD, True),
+                    dataset_loader=self.fake_loader,
+                    n_bootstrap=10,
+                    progress=ExecutionProgress(emit_console=False),
+                )
+            diagnostic_dir = Path(payload["diagnostic_dir"])
+            self.assertTrue(payload["benchmark_only"])
+            self.assertFalse(payload["results_written"])
+            self.assertFalse((root / "out").exists())
+            self.assertTrue((diagnostic_dir / "benchmark_manifest.json").exists())
+            self.assertTrue((diagnostic_dir / "execution_progress.json").exists())
+            self.assertFalse((diagnostic_dir / "classification.json").exists())
+
+    def test_48_keyboard_interrupt_leaves_results_unwritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = self.make_request(root)
+            with patch("src.research.hyp_first_candle_event_discovery._execute_event_study_outputs", side_effect=KeyboardInterrupt):
+                payload = run_operational_discovery(
+                    request,
+                    output_dir=root / "out",
+                    runtime_state=RuntimeState(HEAD, True),
+                    raise_on_error=False,
+                    progress=ExecutionProgress(emit_console=False),
+                )
+            self.assertTrue(payload["interrupted"])
+            self.assertFalse(payload["results_written"])
+            self.assertFalse((root / "out").exists())
 
 
 if __name__ == "__main__":

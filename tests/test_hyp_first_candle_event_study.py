@@ -15,8 +15,10 @@ from src.research.hyp_first_candle_event_runner import (
 from src.research.hyp_first_candle_event_study import (
     EVENT_TYPES,
     FcrEventStudyConfig,
+    attach_bootstrap_intervals,
     aggregate_fcr_event_paths,
     assert_no_strategy_columns,
+    bootstrap_mean_by_session,
     build_opening_range,
     compute_fcr_event_paths,
     detect_fcr_event_study_events,
@@ -53,6 +55,28 @@ def opening(date: str = "2024-07-01") -> list[dict]:
 
 def base_day(extra: list[dict], date: str = "2024-07-01") -> pd.DataFrame:
     return frame(opening(date) + extra)
+
+
+def reference_bootstrap_mean_by_session(
+    data: pd.DataFrame,
+    *,
+    value_column: str,
+    n_bootstrap: int,
+    seed: int,
+) -> tuple[float, float]:
+    import numpy as np
+
+    available = data.loc[data[value_column].notna()].copy()
+    if available.empty:
+        return np.nan, np.nan
+    sessions = np.array(sorted(available["session_date"].astype(str).unique()))
+    rng = np.random.default_rng(seed)
+    sampled_means: list[float] = []
+    for _ in range(n_bootstrap):
+        sampled_sessions = rng.choice(sessions, size=len(sessions), replace=True)
+        sample = pd.concat([available.loc[available["session_date"].astype(str) == item] for item in sampled_sessions])
+        sampled_means.append(float(sample[value_column].mean()))
+    return float(np.percentile(sampled_means, 2.5)), float(np.percentile(sampled_means, 97.5))
 
 
 class HypFirstCandleEventStudyTests(unittest.TestCase):
@@ -307,6 +331,35 @@ class HypFirstCandleEventStudyTests(unittest.TestCase):
         config = FcrEventStudyConfig()
         self.assertEqual(config.allowed_periods, ("discovery_2022_2024",))
         self.assertFalse(any(config.safety_flags.values()))
+
+    def test_30_optimized_bootstrap_matches_concat_reference(self):
+        data = pd.concat(
+            [
+                base_day([bar("2024-07-01 10:00", 100, 100.2, 99.0, 100), bar("2024-07-01 10:05", 100, 101, 99.5, 101)]),
+                base_day([bar("2024-07-02 10:00", 100, 101.0, 99.8, 100), bar("2024-07-02 10:05", 100, 100, 98, 99)], date="2024-07-02"),
+            ],
+            ignore_index=True,
+        )
+        events = detect_fcr_event_study_events(data, "QQQ")
+        paths = compute_fcr_event_paths(data, events, horizons=("5min",))
+        expected = reference_bootstrap_mean_by_session(paths, value_column="reversal_return", n_bootstrap=50, seed=7)
+        actual = bootstrap_mean_by_session(paths, value_column="reversal_return", n_bootstrap=50, seed=7)
+        self.assertEqual(actual, expected)
+
+    def test_31_aggregate_bootstrap_intervals_match_reference(self):
+        data = pd.concat(
+            [
+                base_day([bar("2024-07-01 10:00", 100, 100.2, 99.0, 100), bar("2024-07-01 10:05", 100, 101, 99.5, 101)]),
+                base_day([bar("2024-07-02 10:00", 100, 101.0, 99.8, 100), bar("2024-07-02 10:05", 100, 100, 98, 99)], date="2024-07-02"),
+            ],
+            ignore_index=True,
+        )
+        events = detect_fcr_event_study_events(data, "QQQ")
+        paths = compute_fcr_event_paths(data, events, horizons=("5min",))
+        base = aggregate_fcr_event_paths(paths, group_by=("event_type", "horizon"), n_bootstrap=50, seed=7, include_bootstrap=False)
+        optimized = attach_bootstrap_intervals(base, paths, group_by=("event_type", "horizon"), n_bootstrap=50, seed=7)
+        direct = aggregate_fcr_event_paths(paths, group_by=("event_type", "horizon"), n_bootstrap=50, seed=7)
+        pd.testing.assert_frame_equal(optimized, direct)
 
 
 if __name__ == "__main__":

@@ -6,12 +6,15 @@ import json
 import re
 import shutil
 import subprocess
+import sys
+import time
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
+import numpy as np
 import pandas as pd
 import yaml
 
@@ -21,6 +24,7 @@ from src.research.hyp_first_candle_event_study import (
     HYPOTHESIS_ID,
     SAFETY_FLAGS,
     FcrEventStudyConfig,
+    attach_bootstrap_intervals,
     aggregate_fcr_event_paths,
     canonical_event_config_hash,
     compute_fcr_event_paths,
@@ -61,6 +65,7 @@ REQUIRED_OUTPUT_FILES = (
     "bootstrap_intervals.csv",
     "economic_threshold_comparison.csv",
     "classification.json",
+    "execution_progress.json",
     "checksums.json",
 )
 ALLOWED_CLASSIFICATIONS = {
@@ -74,6 +79,169 @@ SPY_FAILED_ANNUAL_MANIFEST_PATH = Path(
 )
 FULL_GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+MAX_BENCHMARK_SESSIONS_PER_SYMBOL = 10
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _process_memory_mb() -> float | None:
+    try:
+        import psutil  # type: ignore
+
+        return float(psutil.Process().memory_info().rss / (1024 * 1024))
+    except Exception:
+        pass
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class ProcessMemoryCounters(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+            ]
+
+        counters = ProcessMemoryCounters()
+        counters.cb = ctypes.sizeof(ProcessMemoryCounters)
+        ctypes.windll.kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        handle = ctypes.windll.kernel32.GetCurrentProcess()
+        psapi = ctypes.WinDLL("psapi.dll")
+        psapi.GetProcessMemoryInfo.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(ProcessMemoryCounters),
+            wintypes.DWORD,
+        ]
+        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+        if psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
+            return float(counters.WorkingSetSize / (1024 * 1024))
+    except Exception:
+        pass
+    try:
+        import resource
+
+        usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return float(usage / 1024)
+    except Exception:
+        return None
+
+
+class ExecutionProgress:
+    def __init__(self, *, progress_path: Path | None = None, emit_console: bool = True) -> None:
+        self.progress_path = progress_path
+        self.emit_console = emit_console
+        self.stages: list[dict[str, Any]] = []
+
+    def set_progress_path(self, progress_path: Path) -> None:
+        self.progress_path = progress_path
+        self.persist()
+
+    def start(
+        self,
+        stage: str,
+        *,
+        input_rows: int | None = None,
+        output_rows: int | None = None,
+        progress_current: int | None = None,
+        progress_total: int | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        record = {
+            "stage": stage,
+            "status": "running",
+            "start_time": _utc_now_iso(),
+            "end_time": None,
+            "elapsed_seconds": None,
+            "input_rows": input_rows,
+            "output_rows": output_rows,
+            "memory_mb": _process_memory_mb(),
+            "progress_current": progress_current,
+            "progress_total": progress_total,
+            "_perf_start": time.perf_counter(),
+        }
+        if extra:
+            record.update(extra)
+        self.stages.append(record)
+        self._emit(record)
+        self.persist()
+        return record
+
+    def end(
+        self,
+        record: dict[str, Any],
+        *,
+        output_rows: int | None = None,
+        input_rows: int | None = None,
+        status: str = "completed",
+        extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if input_rows is not None:
+            record["input_rows"] = input_rows
+        if output_rows is not None:
+            record["output_rows"] = output_rows
+        record["status"] = status
+        record["end_time"] = _utc_now_iso()
+        record["elapsed_seconds"] = round(float(time.perf_counter() - record.pop("_perf_start", time.perf_counter())), 6)
+        record["memory_mb"] = _process_memory_mb()
+        if extra:
+            record.update(extra)
+        self._emit(record)
+        self.persist()
+        return record
+
+    def mark_interrupted(self, *, temp_dir: Path | None = None, policy: str = "delete_temp_dir") -> None:
+        record = {
+            "stage": "interrupt",
+            "status": "interrupted",
+            "start_time": _utc_now_iso(),
+            "end_time": _utc_now_iso(),
+            "elapsed_seconds": 0.0,
+            "input_rows": None,
+            "output_rows": None,
+            "memory_mb": _process_memory_mb(),
+            "progress_current": None,
+            "progress_total": None,
+            "interrupted": True,
+            "results_written": False,
+            "temp_dir": str(temp_dir) if temp_dir is not None else None,
+            "temp_dir_policy": policy,
+        }
+        self.stages.append(record)
+        self._emit(record)
+        self.persist()
+
+    def summary(self) -> dict[str, Any]:
+        stages = [{key: value for key, value in record.items() if key != "_perf_start"} for record in self.stages]
+        return {
+            "schema_version": 1,
+            "generated_at": _utc_now_iso(),
+            "stages": stages,
+        }
+
+    def persist(self) -> None:
+        if self.progress_path is None:
+            return
+        payload = self.summary()
+        self.progress_path.parent.mkdir(parents=True, exist_ok=True)
+        self.progress_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, default=str, allow_nan=False),
+            encoding="utf-8",
+        )
+
+    def _emit(self, record: dict[str, Any]) -> None:
+        if not self.emit_console:
+            return
+        printable = {key: value for key, value in record.items() if key != "_perf_start"}
+        print(json.dumps({"execution_progress": printable}, sort_keys=True, default=str), flush=True)
 
 
 @dataclass(frozen=True)
@@ -84,9 +252,11 @@ class RuntimeState:
 
 @dataclass(frozen=True)
 class FcrEventDiscoveryRequest:
-    mode: Literal["prepare_only", "run_discovery"] = "prepare_only"
+    mode: Literal["prepare_only", "run_discovery", "profile_synthetic", "benchmark_subset"] = "prepare_only"
     expected_freeze_commit: str = ""
     expected_canonical_hash: str = ""
+    max_sessions_per_symbol: int | None = None
+    debug: bool = False
     period: str = DISCOVERY_PERIOD
     symbols: tuple[str, ...] = EXPECTED_SYMBOLS
     requested_start: str = DISCOVERY_START
@@ -251,8 +421,15 @@ def validate_discovery_preflight(
 ) -> dict[str, Any]:
     if request.mode == "prepare_only":
         return prepare_only_manifest(request)
-    if request.mode != "run_discovery":
+    if request.mode not in ("run_discovery", "benchmark_subset"):
         raise PermissionError(f"Unsupported HYP-FCR-EVENT-01 mode: {request.mode}")
+    if request.mode == "benchmark_subset":
+        if request.max_sessions_per_symbol is None:
+            raise PermissionError("--max-sessions-per-symbol is required for benchmark_subset.")
+        if request.max_sessions_per_symbol < 1 or request.max_sessions_per_symbol > MAX_BENCHMARK_SESSIONS_PER_SYMBOL:
+            raise PermissionError(
+                f"benchmark_subset is capped at {MAX_BENCHMARK_SESSIONS_PER_SYMBOL} sessions per symbol."
+            )
     _reject_placeholder_or_empty_commit(request.expected_freeze_commit)
     _reject_bad_canonical_hash(request.expected_canonical_hash)
     runtime_state = runtime_state or collect_runtime_state()
@@ -345,6 +522,15 @@ def filter_discovery_analytic_frame(frame: pd.DataFrame, symbol: str) -> pd.Data
     if symbol.upper() == "SPY" and any(str(item) == "2023-06-05" for item in filtered_dates):
         raise AssertionError("SPY 2023-06-05 must remain excluded from the analytic frame.")
     return filtered.reset_index(drop=True)
+
+
+def limit_analytic_sessions(frame: pd.DataFrame, max_sessions: int) -> pd.DataFrame:
+    if max_sessions < 1 or max_sessions > MAX_BENCHMARK_SESSIONS_PER_SYMBOL:
+        raise PermissionError(f"Benchmark subset is capped at {MAX_BENCHMARK_SESSIONS_PER_SYMBOL} sessions.")
+    local_dates = _local_dates(frame)
+    selected = set(sorted(local_dates.astype(str).unique().tolist())[:max_sessions])
+    limited = frame.loc[local_dates.astype(str).isin(selected)].copy()
+    return limited.reset_index(drop=True)
 
 
 def _write_json(path: Path, payload: Any) -> None:
@@ -451,7 +637,8 @@ def _bootstrap_intervals(aggregate_metrics: pd.DataFrame) -> pd.DataFrame:
 
 
 def _write_checksums(output_dir: Path, input_paths: list[Path], output_names: tuple[str, ...]) -> None:
-    outputs = [output_dir / name for name in output_names if name != "checksums.json"]
+    diagnostic_outputs = {"checksums.json", "execution_progress.json"}
+    outputs = [output_dir / name for name in output_names if name not in diagnostic_outputs]
     payload = {
         "inputs": [{"path": str(path), "sha256": _sha256_file(path)} for path in input_paths if path.exists()],
         "outputs": [{"path": path.name, "sha256": _sha256_file(path)} for path in outputs if path.exists()],
@@ -476,12 +663,16 @@ def _execute_event_study_outputs(
     dataset_loader=load_approved_event_dataset,
     bootstrap_seed: int = BOOTSTRAP_SEED,
     n_bootstrap: int = 500,
+    progress: ExecutionProgress | None = None,
+    benchmark_only: bool = False,
 ) -> dict[str, Any]:
     final_dir = Path(output_dir)
-    if final_dir.exists() and any(final_dir.iterdir()):
+    if not benchmark_only and final_dir.exists() and any(final_dir.iterdir()):
         raise FileExistsError(f"Discovery output directory already exists and is not empty: {final_dir}")
     final_dir.parent.mkdir(parents=True, exist_ok=True)
-    temp_dir = final_dir.parent / f".{final_dir.name}.tmp-{uuid4().hex}"
+    temp_label = "benchmark" if benchmark_only else "tmp"
+    temp_dir = final_dir.parent / f".{final_dir.name}.{temp_label}-{uuid4().hex}"
+    progress = progress or ExecutionProgress()
     config = FcrEventStudyConfig()
     dataset_paths = request.dataset_paths or CURATED_DATASET_PATHS
     manifest_paths = request.manifest_paths or CURATED_MANIFEST_PATHS
@@ -492,13 +683,62 @@ def _execute_event_study_outputs(
 
     try:
         temp_dir.mkdir(parents=True, exist_ok=False)
+        progress.set_progress_path(temp_dir / "execution_progress.json")
         shutil.copyfile(request.config_path, temp_dir / "config_snapshot.yaml")
-        for symbol in EXPECTED_SYMBOLS:
+        for symbol_index, symbol in enumerate(EXPECTED_SYMBOLS, start=1):
+            load_stage = progress.start(
+                f"load_{symbol}",
+                progress_current=symbol_index,
+                progress_total=len(EXPECTED_SYMBOLS),
+                extra={"symbol": symbol},
+            )
             minute_frame, manifest = dataset_loader(symbol, dataset_paths[symbol], manifest_paths[symbol])
+            progress.end(load_stage, output_rows=len(minute_frame))
+
+            crop_stage = progress.start(
+                "temporal_crop",
+                input_rows=len(minute_frame),
+                progress_current=symbol_index,
+                progress_total=len(EXPECTED_SYMBOLS),
+                extra={"symbol": symbol},
+            )
             analytic = filter_discovery_analytic_frame(minute_frame, symbol)
+            if benchmark_only:
+                if request.max_sessions_per_symbol is None:
+                    raise PermissionError("--max-sessions-per-symbol is required for benchmark_subset.")
+                analytic = limit_analytic_sessions(analytic, request.max_sessions_per_symbol)
+            progress.end(crop_stage, output_rows=len(analytic))
+
+            resample_stage = progress.start(
+                "resample_1m_to_5m",
+                input_rows=len(analytic),
+                progress_current=symbol_index,
+                progress_total=len(EXPECTED_SYMBOLS),
+                extra={"symbol": symbol},
+            )
             five_minute = prepare_five_minute_frame(analytic)
+            progress.end(resample_stage, output_rows=len(five_minute))
+
+            detection_stage = progress.start(
+                "detect_events",
+                input_rows=len(five_minute),
+                progress_current=symbol_index,
+                progress_total=len(EXPECTED_SYMBOLS),
+                extra={"symbol": symbol, "event_types": list(EVENT_TYPES)},
+            )
             events = detect_fcr_event_study_events(five_minute, symbol, config)
+            progress.end(detection_stage, output_rows=len(events))
+
+            path_stage = progress.start(
+                "path_metrics",
+                input_rows=len(events),
+                progress_current=symbol_index,
+                progress_total=len(EXPECTED_SYMBOLS),
+                extra={"symbol": symbol, "horizons": list(config.horizons)},
+            )
             paths = compute_fcr_event_paths(five_minute, events, config, horizons=config.horizons)
+            progress.end(path_stage, output_rows=len(paths))
+
             assert_no_strategy_columns(events)
             assert_no_strategy_columns(paths)
             if not events.empty and not set(events["event_type"]).issubset(set(EVENT_TYPES)):
@@ -533,42 +773,61 @@ def _execute_event_study_outputs(
         assert_no_strategy_columns(events_frame)
         assert_no_strategy_columns(paths_frame)
 
+        aggregate_groups = {
+            "aggregate_metrics": ("event_type", "horizon", "symbol", "orientation", "year"),
+            "metrics_by_symbol": ("symbol",),
+            "metrics_by_year": ("year",),
+            "metrics_by_event": ("event_type",),
+            "metrics_by_horizon": ("horizon",),
+        }
+        aggregate_stage = progress.start("aggregations_base", input_rows=len(paths_frame), progress_current=0, progress_total=len(aggregate_groups))
         aggregate_metrics = aggregate_fcr_event_paths(
             paths_frame,
-            group_by=("event_type", "horizon", "symbol", "orientation", "year"),
+            group_by=aggregate_groups["aggregate_metrics"],
             n_bootstrap=n_bootstrap,
             seed=bootstrap_seed,
+            include_bootstrap=False,
         )
-        metrics_by_symbol = aggregate_fcr_event_paths(paths_frame, group_by=("symbol",), n_bootstrap=n_bootstrap, seed=bootstrap_seed)
-        metrics_by_year = aggregate_fcr_event_paths(paths_frame, group_by=("year",), n_bootstrap=n_bootstrap, seed=bootstrap_seed)
-        metrics_by_event = aggregate_fcr_event_paths(paths_frame, group_by=("event_type",), n_bootstrap=n_bootstrap, seed=bootstrap_seed)
-        metrics_by_horizon = aggregate_fcr_event_paths(paths_frame, group_by=("horizon",), n_bootstrap=n_bootstrap, seed=bootstrap_seed)
+        metrics_by_symbol = aggregate_fcr_event_paths(paths_frame, group_by=aggregate_groups["metrics_by_symbol"], n_bootstrap=n_bootstrap, seed=bootstrap_seed, include_bootstrap=False)
+        metrics_by_year = aggregate_fcr_event_paths(paths_frame, group_by=aggregate_groups["metrics_by_year"], n_bootstrap=n_bootstrap, seed=bootstrap_seed, include_bootstrap=False)
+        metrics_by_event = aggregate_fcr_event_paths(paths_frame, group_by=aggregate_groups["metrics_by_event"], n_bootstrap=n_bootstrap, seed=bootstrap_seed, include_bootstrap=False)
+        metrics_by_horizon = aggregate_fcr_event_paths(paths_frame, group_by=aggregate_groups["metrics_by_horizon"], n_bootstrap=n_bootstrap, seed=bootstrap_seed, include_bootstrap=False)
+        aggregate_output_rows = int(sum(len(frame) for frame in [aggregate_metrics, metrics_by_symbol, metrics_by_year, metrics_by_event, metrics_by_horizon]))
+        progress.end(aggregate_stage, output_rows=aggregate_output_rows, extra={"group_count": len(aggregate_groups)})
+
+        bootstrap_stage = progress.start(
+            "bootstrap",
+            input_rows=len(paths_frame),
+            progress_current=0,
+            progress_total=len(aggregate_groups),
+            extra={"bootstrap_seed": int(bootstrap_seed), "n_bootstrap": int(n_bootstrap), "grouped_by": "session_date"},
+        )
+        aggregate_metrics = attach_bootstrap_intervals(aggregate_metrics, paths_frame, group_by=aggregate_groups["aggregate_metrics"], n_bootstrap=n_bootstrap, seed=bootstrap_seed)
+        metrics_by_symbol = attach_bootstrap_intervals(metrics_by_symbol, paths_frame, group_by=aggregate_groups["metrics_by_symbol"], n_bootstrap=n_bootstrap, seed=bootstrap_seed)
+        metrics_by_year = attach_bootstrap_intervals(metrics_by_year, paths_frame, group_by=aggregate_groups["metrics_by_year"], n_bootstrap=n_bootstrap, seed=bootstrap_seed)
+        metrics_by_event = attach_bootstrap_intervals(metrics_by_event, paths_frame, group_by=aggregate_groups["metrics_by_event"], n_bootstrap=n_bootstrap, seed=bootstrap_seed)
+        metrics_by_horizon = attach_bootstrap_intervals(metrics_by_horizon, paths_frame, group_by=aggregate_groups["metrics_by_horizon"], n_bootstrap=n_bootstrap, seed=bootstrap_seed)
+        progress.end(bootstrap_stage, output_rows=aggregate_output_rows)
+
         bootstrap_intervals = _bootstrap_intervals(aggregate_metrics)
         economic_thresholds = _economic_threshold_comparison(aggregate_metrics)
-        classification = _classify_effect(aggregate_metrics)
-        for value in classification.values():
-            if isinstance(value, str) and value.startswith("candidate_strategy"):
-                raise AssertionError("Event study must not create a strategy classification.")
-
-        _serializable_frame(events_frame).to_csv(temp_dir / "events.csv", index=False)
-        _serializable_frame(paths_frame).to_csv(temp_dir / "path_metrics.csv", index=False)
-        aggregate_metrics.to_csv(temp_dir / "aggregate_metrics.csv", index=False)
-        metrics_by_symbol.to_csv(temp_dir / "metrics_by_symbol.csv", index=False)
-        metrics_by_year.to_csv(temp_dir / "metrics_by_year.csv", index=False)
-        metrics_by_event.to_csv(temp_dir / "metrics_by_event.csv", index=False)
-        metrics_by_horizon.to_csv(temp_dir / "metrics_by_horizon.csv", index=False)
-        bootstrap_intervals.to_csv(temp_dir / "bootstrap_intervals.csv", index=False)
-        economic_thresholds.to_csv(temp_dir / "economic_threshold_comparison.csv", index=False)
-        _write_json(temp_dir / "dataset_manifest_snapshot.json", dataset_snapshot)
-        _write_json(temp_dir / "classification.json", classification)
+        classification: dict[str, Any] | None = None
+        if not benchmark_only:
+            classification_stage = progress.start("classification", input_rows=len(aggregate_metrics))
+            classification = _classify_effect(aggregate_metrics)
+            for value in classification.values():
+                if isinstance(value, str) and value.startswith("candidate_strategy"):
+                    raise AssertionError("Event study must not create a strategy classification.")
+            progress.end(classification_stage, output_rows=1, extra={"classification": classification["classification"]})
 
         run_manifest = {
             "hypothesis_id": HYPOTHESIS_ID,
-            "mode": "run_discovery",
+            "mode": "benchmark_subset" if benchmark_only else "run_discovery",
             "period": DISCOVERY_PERIOD,
             "preflight_passed": True,
-            "event_study_executed": True,
+            "event_study_executed": not benchmark_only,
             "results_written": False,
+            "benchmark_only": bool(benchmark_only),
             "requested_start": DISCOVERY_START,
             "requested_end": DISCOVERY_END,
             "symbols": list(EXPECTED_SYMBOLS),
@@ -579,7 +838,7 @@ def _execute_event_study_outputs(
             "canonical_payload_hash": preflight_payload["canonical_payload_hash"],
             "head_commit": preflight_payload["head_commit"],
             "analytic_frame_rows": analytic_frame_rows,
-            "classification": classification["classification"],
+            "classification": None if classification is None else classification["classification"],
             "validation_2025_executed": False,
             "parity_2026_executed": False,
             "holdout_executed": False,
@@ -595,11 +854,36 @@ def _execute_event_study_outputs(
             "documentation_updated": False,
             "registry_updated": False,
         }
+
+        write_stage = progress.start("writing_and_checksums", input_rows=int(len(events_frame) + len(paths_frame) + aggregate_output_rows))
+        if benchmark_only:
+            _write_json(temp_dir / "benchmark_manifest.json", run_manifest)
+            progress.end(write_stage, output_rows=2, extra={"diagnostic_files": ["benchmark_manifest.json", "execution_progress.json"]})
+            return {
+                "run_manifest": run_manifest,
+                "diagnostic_dir": str(temp_dir),
+                "benchmark_only": True,
+                "event_count": int(len(events_frame)),
+                "path_metric_rows": int(len(paths_frame)),
+                "results_written": False,
+            }
+
+        _serializable_frame(events_frame).to_csv(temp_dir / "events.csv", index=False)
+        _serializable_frame(paths_frame).to_csv(temp_dir / "path_metrics.csv", index=False)
+        aggregate_metrics.to_csv(temp_dir / "aggregate_metrics.csv", index=False)
+        metrics_by_symbol.to_csv(temp_dir / "metrics_by_symbol.csv", index=False)
+        metrics_by_year.to_csv(temp_dir / "metrics_by_year.csv", index=False)
+        metrics_by_event.to_csv(temp_dir / "metrics_by_event.csv", index=False)
+        metrics_by_horizon.to_csv(temp_dir / "metrics_by_horizon.csv", index=False)
+        bootstrap_intervals.to_csv(temp_dir / "bootstrap_intervals.csv", index=False)
+        economic_thresholds.to_csv(temp_dir / "economic_threshold_comparison.csv", index=False)
+        _write_json(temp_dir / "dataset_manifest_snapshot.json", dataset_snapshot)
+        _write_json(temp_dir / "classification.json", classification)
         _write_json(temp_dir / "run_manifest.json", run_manifest)
-        _write_checksums(temp_dir, [request.config_path, *manifest_paths.values()], REQUIRED_OUTPUT_FILES)
-        _verify_required_outputs(temp_dir)
+
         run_manifest["results_written"] = True
         _write_json(temp_dir / "run_manifest.json", run_manifest)
+        progress.end(write_stage, output_rows=len(REQUIRED_OUTPUT_FILES), extra={"required_outputs": list(REQUIRED_OUTPUT_FILES)})
         _write_checksums(temp_dir, [request.config_path, *manifest_paths.values()], REQUIRED_OUTPUT_FILES)
         _verify_required_outputs(temp_dir)
         if final_dir.exists():
@@ -613,10 +897,177 @@ def _execute_event_study_outputs(
             "path_metric_rows": int(len(paths_frame)),
             "results_written": True,
         }
+    except KeyboardInterrupt:
+        progress.mark_interrupted(temp_dir=temp_dir, policy="delete_temp_dir")
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+        raise
     except Exception:
         if temp_dir.exists():
             shutil.rmtree(temp_dir)
         raise
+
+
+def build_synthetic_five_minute_frame(session_count: int, *, symbol: str = "QQQ") -> pd.DataFrame:
+    if session_count < 1:
+        raise ValueError("session_count must be positive.")
+    rows: list[dict[str, Any]] = []
+    sessions = pd.bdate_range("2024-01-02", periods=session_count)
+    for session_index, session_day in enumerate(sessions):
+        base = 100.0 + session_index * 0.01 + (0.5 if symbol.upper() == "SPY" else 0.0)
+        for bar_index in range(78):
+            local_timestamp = (
+                pd.Timestamp(f"{session_day.date()} 09:30", tz="America/New_York")
+                + timedelta(minutes=int(5 * bar_index))
+            )
+            open_price = base
+            high = base + 0.45
+            low = base - 0.45
+            close = base
+            if bar_index < 6:
+                high = base + 1.0
+                low = base - 1.0
+            elif bar_index == 6:
+                low = base - 1.02
+                close = base - 0.35
+            elif bar_index == 7:
+                low = base - 1.20
+                close = base - 0.20
+            elif bar_index == 8:
+                high = base + 0.75
+                low = base + 0.10
+                close = base + 0.35
+            elif bar_index == 12:
+                high = base + 1.02
+                close = base + 0.35
+            elif bar_index == 13:
+                high = base + 1.20
+                close = base + 0.20
+            elif bar_index == 14:
+                high = base - 0.10
+                low = base - 0.75
+                close = base - 0.35
+            elif bar_index > 14:
+                drift = ((bar_index - 14) % 9 - 4) * 0.02
+                high = base + 0.40 + drift
+                low = base - 0.40 + drift
+                close = base + drift
+            rows.append(
+                {
+                    "timestamp": local_timestamp.tz_convert("UTC"),
+                    "open": open_price,
+                    "high": high,
+                    "low": low,
+                    "close": close,
+                    "volume": 1000 + session_index,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _time_call(label: str, fn, *, progress: ExecutionProgress, input_rows: int | None = None) -> tuple[Any, dict[str, Any]]:
+    stage = progress.start(label, input_rows=input_rows)
+    result = fn()
+    output_rows = len(result) if hasattr(result, "__len__") else None
+    record = progress.end(stage, output_rows=output_rows)
+    return result, record
+
+
+def _profile_synthetic_size(
+    session_count: int,
+    *,
+    n_bootstrap: int,
+    progress: ExecutionProgress,
+) -> dict[str, Any]:
+    config = FcrEventStudyConfig()
+    five_minute = build_synthetic_five_minute_frame(session_count, symbol="QQQ")
+    events, detection = _time_call(
+        f"profile_detect_events_{session_count}",
+        lambda: detect_fcr_event_study_events(five_minute, "QQQ", config),
+        progress=progress,
+        input_rows=len(five_minute),
+    )
+    paths, path_metrics = _time_call(
+        f"profile_path_metrics_{session_count}",
+        lambda: compute_fcr_event_paths(five_minute, events, config, horizons=config.horizons),
+        progress=progress,
+        input_rows=len(events),
+    )
+    aggregates, aggregation = _time_call(
+        f"profile_aggregations_base_{session_count}",
+        lambda: aggregate_fcr_event_paths(
+            paths,
+            group_by=("event_type", "horizon", "symbol", "orientation", "year"),
+            n_bootstrap=n_bootstrap,
+            seed=BOOTSTRAP_SEED,
+            include_bootstrap=False,
+        ),
+        progress=progress,
+        input_rows=len(paths),
+    )
+    with_bootstrap, bootstrap = _time_call(
+        f"profile_bootstrap_{session_count}",
+        lambda: attach_bootstrap_intervals(
+            aggregates,
+            paths,
+            group_by=("event_type", "horizon", "symbol", "orientation", "year"),
+            n_bootstrap=n_bootstrap,
+            seed=BOOTSTRAP_SEED,
+        ),
+        progress=progress,
+        input_rows=len(paths),
+    )
+    return {
+        "sessions": session_count,
+        "five_minute_rows": int(len(five_minute)),
+        "events": int(len(events)),
+        "path_rows": int(len(paths)),
+        "aggregate_rows": int(len(with_bootstrap)),
+        "timings": {
+            "detection_seconds": detection["elapsed_seconds"],
+            "path_metrics_seconds": path_metrics["elapsed_seconds"],
+            "aggregations_base_seconds": aggregation["elapsed_seconds"],
+            "bootstrap_seconds": bootstrap["elapsed_seconds"],
+        },
+        "dataframe_copies_inferred": {
+            "path_metrics_session_cache": 1,
+            "bootstrap_dataframe_concats_per_replica": 0,
+            "aggregate_dataframe_copies": 0,
+        },
+    }
+
+
+def run_profile_synthetic(
+    *,
+    base_sessions: int = 12,
+    n_bootstrap: int = 500,
+    progress: ExecutionProgress | None = None,
+) -> dict[str, Any]:
+    progress = progress or ExecutionProgress()
+    first = _profile_synthetic_size(base_sessions, n_bootstrap=n_bootstrap, progress=progress)
+    second = _profile_synthetic_size(base_sessions * 2, n_bootstrap=n_bootstrap, progress=progress)
+    growth = {
+        key: (
+            second["timings"][key] / first["timings"][key]
+            if first["timings"][key] and first["timings"][key] > 0
+            else None
+        )
+        for key in first["timings"]
+    }
+    return {
+        "hypothesis_id": HYPOTHESIS_ID,
+        "mode": "profile_synthetic",
+        "synthetic_only": True,
+        "real_ohlc_read": False,
+        "base_sessions": base_sessions,
+        "double_sessions": base_sessions * 2,
+        "n_bootstrap": int(n_bootstrap),
+        "bootstrap_seed": BOOTSTRAP_SEED,
+        "first": first,
+        "second": second,
+        "growth_when_doubling_sessions": growth,
+        "progress": progress.summary(),
+    }
 
 
 def run_operational_discovery(
@@ -627,14 +1078,27 @@ def run_operational_discovery(
     dataset_loader=load_approved_event_dataset,
     n_bootstrap: int = 500,
     raise_on_error: bool = True,
+    progress: ExecutionProgress | None = None,
 ) -> dict[str, Any]:
     request = request or FcrEventDiscoveryRequest()
-    preflight_payload = validate_discovery_preflight(request, runtime_state=runtime_state)
+    progress = progress or ExecutionProgress()
+    if request.mode == "profile_synthetic":
+        return run_profile_synthetic(n_bootstrap=n_bootstrap, progress=progress)
+
+    preflight_stage = progress.start("preflight")
+    try:
+        preflight_payload = validate_discovery_preflight(request, runtime_state=runtime_state)
+        progress.end(preflight_stage, output_rows=1, extra={"preflight_passed": True})
+    except Exception as exc:
+        progress.end(preflight_stage, status="failed", extra={"preflight_passed": False, "error": str(exc)})
+        raise
+
     if request.mode == "prepare_only":
         return preflight_payload
     summary = dict(preflight_payload)
     summary["event_study_executed"] = False
     summary["results_written"] = False
+    benchmark_only = request.mode == "benchmark_subset"
     try:
         execution = _execute_event_study_outputs(
             preflight_payload,
@@ -642,13 +1106,34 @@ def run_operational_discovery(
             output_dir=output_dir,
             dataset_loader=dataset_loader,
             n_bootstrap=n_bootstrap,
+            progress=progress,
+            benchmark_only=benchmark_only,
         )
+    except KeyboardInterrupt:
+        summary["interrupted"] = True
+        summary["event_study_executed"] = not benchmark_only
+        summary["results_written"] = False
+        if raise_on_error:
+            raise
+        return summary
     except Exception as exc:
-        summary["event_study_executed"] = True
+        summary["event_study_executed"] = not benchmark_only
         summary["results_written"] = False
         summary["error"] = str(exc)
         if raise_on_error:
             raise
+        return summary
+    if benchmark_only:
+        summary.update(
+            {
+                "benchmark_only": True,
+                "event_study_executed": False,
+                "results_written": False,
+                "diagnostic_dir": execution["diagnostic_dir"],
+                "event_count": execution["event_count"],
+                "path_metric_rows": execution["path_metric_rows"],
+            }
+        )
         return summary
     summary.update(
         {
@@ -665,23 +1150,53 @@ def run_operational_discovery(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Operational preflight for HYP-FCR-EVENT-01 discovery.")
-    parser.add_argument("--mode", choices=("prepare_only", "run_discovery"), default="prepare_only")
+    parser.add_argument(
+        "--mode",
+        choices=("prepare_only", "run_discovery", "profile_synthetic", "benchmark_subset"),
+        default="prepare_only",
+    )
     parser.add_argument("--expected-freeze-commit", default="")
     parser.add_argument("--expected-canonical-hash", default="")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
+    parser.add_argument("--max-sessions-per-symbol", type=int, default=None)
+    parser.add_argument("--synthetic-sessions", type=int, default=12)
+    parser.add_argument("--debug", action="store_true")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    payload = run_operational_discovery(
-        FcrEventDiscoveryRequest(
-            mode=args.mode,
-            expected_freeze_commit=args.expected_freeze_commit,
-            expected_canonical_hash=args.expected_canonical_hash,
-        ),
-        output_dir=args.output_dir,
-    )
+    progress = ExecutionProgress()
+    try:
+        if args.mode == "profile_synthetic":
+            payload = run_profile_synthetic(base_sessions=args.synthetic_sessions, progress=progress)
+        else:
+            payload = run_operational_discovery(
+                FcrEventDiscoveryRequest(
+                    mode=args.mode,
+                    expected_freeze_commit=args.expected_freeze_commit,
+                    expected_canonical_hash=args.expected_canonical_hash,
+                    max_sessions_per_symbol=args.max_sessions_per_symbol,
+                    debug=args.debug,
+                ),
+                output_dir=args.output_dir,
+                progress=progress,
+            )
+    except KeyboardInterrupt:
+        progress.mark_interrupted(policy="delete_temp_dir")
+        payload = {
+            "hypothesis_id": HYPOTHESIS_ID,
+            "mode": args.mode,
+            "interrupted": True,
+            "results_written": False,
+            "event_study_executed": False,
+            "registry_updated": False,
+            "temp_dir_policy": "delete_temp_dir",
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True, default=str), file=sys.stderr, flush=True)
+        if args.debug:
+            raise
+        return 130
     print(json.dumps(payload, indent=2, sort_keys=True, default=str))
     return 0
 
