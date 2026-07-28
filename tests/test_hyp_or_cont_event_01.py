@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -38,6 +40,7 @@ from src.research.hyp_or_cont_event_01 import (
 
 
 CONFIG_PATH = Path("configs/research/hypotheses/HYP-OR-CONT-EVENT-01.yaml")
+EXECUTION_FREEZE_COMMIT = "f" * 40
 
 
 def ts(value: str) -> pd.Timestamp:
@@ -277,6 +280,8 @@ class HypOrContEvent01Tests(unittest.TestCase):
         write_manifest(spy_manifest, "SPY")
         values = {
             "mode": "run_discovery",
+            "expected_freeze_commit": EXECUTION_FREEZE_COMMIT,
+            "expected_canonical_hash": EXPECTED_CANONICAL_HASH,
             "manifest_paths": {"QQQ": qqq_manifest, "SPY": spy_manifest},
             "dataset_paths": {"QQQ": root / "QQQ.csv", "SPY": root / "SPY.csv"},
         }
@@ -317,21 +322,71 @@ class HypOrContEvent01Tests(unittest.TestCase):
         self.assertFalse(payload["event_study_executed"])
         self.assertFalse(payload["results_written"])
 
+    def test_cli_recognizes_expected_freeze_and_hash_arguments_in_prepare_only(self):
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "src.research.hyp_or_cont_event_01_discovery",
+                "--mode",
+                "prepare_only",
+                "--expected-freeze-commit",
+                EXECUTION_FREEZE_COMMIT,
+                "--expected-canonical-hash",
+                EXPECTED_CANONICAL_HASH,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["mode"], "prepare_only")
+        self.assertEqual(payload["execution_freeze_commit"], EXECUTION_FREEZE_COMMIT)
+
+    def test_cli_requires_expected_freeze_and_hash_for_run_discovery(self):
+        completed = subprocess.run(
+            [sys.executable, "-m", "src.research.hyp_or_cont_event_01_discovery", "--mode", "run_discovery"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("--expected-freeze-commit is required for run_discovery", completed.stderr)
+
     def test_preflight_validates_freeze_commit_and_hash(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             request = self.make_request(root)
-            runtime = RuntimeState("f" * 40, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            runtime = RuntimeState(EXECUTION_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
             payload = validate_discovery_preflight(request, runtime_state=runtime)
-            self.assertEqual(payload["freeze_commit"], EXPECTED_FREEZE_COMMIT)
+            self.assertEqual(payload["preregistration_commit"], EXPECTED_FREEZE_COMMIT)
+            self.assertEqual(payload["execution_freeze_commit"], EXECUTION_FREEZE_COMMIT)
+            self.assertEqual(payload["freeze_commit"], EXECUTION_FREEZE_COMMIT)
             self.assertEqual(payload["canonical_payload_hash"], EXPECTED_CANONICAL_HASH)
 
     def test_preflight_rejects_wrong_freeze_commit(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             request = self.make_request(root)
-            runtime = RuntimeState("f" * 40, "0" * 40, EXPECTED_FREEZE_COMMIT)
-            with self.assertRaises(PermissionError):
+            runtime = RuntimeState("0" * 40, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            with self.assertRaisesRegex(PermissionError, "expected_freeze_commit=.*actual_head_commit"):
+                validate_discovery_preflight(request, runtime_state=runtime)
+
+    def test_preflight_rejects_wrong_canonical_hash(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = self.make_request(root, expected_canonical_hash="0" * 64)
+            runtime = RuntimeState(EXECUTION_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            with self.assertRaisesRegex(PermissionError, "Canonical payload hash mismatch"):
+                validate_discovery_preflight(request, runtime_state=runtime)
+
+    def test_preflight_requires_run_discovery_arguments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = self.make_request(root, expected_freeze_commit=None, expected_canonical_hash=None)
+            runtime = RuntimeState(EXECUTION_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            with self.assertRaisesRegex(PermissionError, "--expected-freeze-commit"):
                 validate_discovery_preflight(request, runtime_state=runtime)
 
     def test_preflight_requires_approved_curated_manifests(self):
@@ -339,7 +394,7 @@ class HypOrContEvent01Tests(unittest.TestCase):
             root = Path(directory)
             request = self.make_request(root)
             write_manifest(request.manifest_paths["QQQ"], "QQQ", status="failed_audit")
-            runtime = RuntimeState("f" * 40, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            runtime = RuntimeState(EXECUTION_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
             with self.assertRaises(PermissionError):
                 validate_discovery_preflight(request, runtime_state=runtime)
 
@@ -447,7 +502,7 @@ class HypOrContEvent01Tests(unittest.TestCase):
             root = Path(directory)
             output = root / "out"
             request = self.make_request(root)
-            runtime = RuntimeState("f" * 40, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            runtime = RuntimeState(EXECUTION_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
             payload = run_operational_discovery(
                 request,
                 output_dir=output,
@@ -458,16 +513,22 @@ class HypOrContEvent01Tests(unittest.TestCase):
                 progress=ExecutionProgress(emit_console=False),
             )
             self.assertTrue(payload["results_written"])
+            self.assertEqual(payload["preregistration_commit"], EXPECTED_FREEZE_COMMIT)
+            self.assertEqual(payload["execution_freeze_commit"], EXECUTION_FREEZE_COMMIT)
+            self.assertEqual(payload["head_commit"], EXECUTION_FREEZE_COMMIT)
             self.assertEqual({path.name for path in output.iterdir()}, set(REQUIRED_OUTPUT_FILES))
             self.assertTrue((output / "confirmed_events.csv").exists())
             self.assertTrue((output / "unconditional_control.csv").exists())
+            run_manifest = json.loads((output / "run_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(run_manifest["preregistration_commit"], EXPECTED_FREEZE_COMMIT)
+            self.assertEqual(run_manifest["execution_freeze_commit"], EXECUTION_FREEZE_COMMIT)
 
     def test_atomic_write_leaves_no_final_directory_on_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             output = root / "out"
             request = self.make_request(root)
-            runtime = RuntimeState("f" * 40, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            runtime = RuntimeState(EXECUTION_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
             with patch("src.research.hyp_or_cont_event_01_discovery._verify_required_outputs", side_effect=FileNotFoundError("missing")):
                 payload = run_operational_discovery(
                     request,
@@ -482,12 +543,66 @@ class HypOrContEvent01Tests(unittest.TestCase):
             self.assertFalse(payload["results_written"])
             self.assertFalse(output.exists())
 
+    def test_preflight_failure_happens_before_dataset_load_and_final_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "out"
+            request = self.make_request(root)
+            runtime = RuntimeState("0" * 40, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            loader_called = False
+
+            def blocked_loader(symbol: str, csv_path: Path, manifest_path: Path):
+                nonlocal loader_called
+                loader_called = True
+                return self.fake_loader(symbol, csv_path, manifest_path)
+
+            payload = run_operational_discovery(
+                request,
+                output_dir=output,
+                runtime_state=runtime,
+                dataset_loader=blocked_loader,
+                five_minute_preparer=lambda frame: frame,
+                progress=ExecutionProgress(emit_console=False),
+                raise_on_error=False,
+            )
+            self.assertIn("Execution freeze commit mismatch", payload["error"])
+            self.assertFalse(loader_called)
+            self.assertFalse(output.exists())
+
+    def test_existing_final_output_blocks_before_dataset_load(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "out"
+            output.mkdir()
+            (output / "sentinel.txt").write_text("existing", encoding="utf-8")
+            request = self.make_request(root)
+            runtime = RuntimeState(EXECUTION_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            loader_called = False
+
+            def blocked_loader(symbol: str, csv_path: Path, manifest_path: Path):
+                nonlocal loader_called
+                loader_called = True
+                return self.fake_loader(symbol, csv_path, manifest_path)
+
+            payload = run_operational_discovery(
+                request,
+                output_dir=output,
+                runtime_state=runtime,
+                dataset_loader=blocked_loader,
+                five_minute_preparer=lambda frame: frame,
+                progress=ExecutionProgress(emit_console=False),
+                raise_on_error=False,
+            )
+            self.assertIn("Output directory already exists", payload["error"])
+            self.assertFalse(loader_called)
+            self.assertTrue((output / "sentinel.txt").exists())
+
     def test_runner_outputs_do_not_contain_strategy_columns(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             output = root / "out"
             request = self.make_request(root)
-            runtime = RuntimeState("f" * 40, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            runtime = RuntimeState(EXECUTION_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
             run_operational_discovery(
                 request,
                 output_dir=output,

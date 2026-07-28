@@ -72,6 +72,7 @@ REQUIRED_OUTPUT_FILES = (
     "execution_progress.json",
     "checksums.json",
 )
+PREREGISTRATION_COMMIT = EXPECTED_FREEZE_COMMIT
 
 
 @dataclass(frozen=True)
@@ -79,13 +80,14 @@ class RuntimeState:
     head_commit: str
     config_freeze_commit: str
     doc_freeze_commit: str
+    working_tree_clean: bool = True
 
 
 @dataclass(frozen=True)
 class OrContDiscoveryRequest:
     mode: Literal["prepare_only", "run_discovery"] = "prepare_only"
-    expected_freeze_commit: str = EXPECTED_FREEZE_COMMIT
-    expected_canonical_hash: str = EXPECTED_CANONICAL_HASH
+    expected_freeze_commit: str | None = None
+    expected_canonical_hash: str | None = None
     period: str = DISCOVERY_PERIOD
     requested_start: str = DISCOVERY_START
     requested_end: str = DISCOVERY_END
@@ -172,6 +174,7 @@ def _utc_now_iso() -> str:
 def collect_runtime_state(cwd: str | Path = Path(".")) -> RuntimeState:
     root = Path(cwd)
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    status = subprocess.check_output(["git", "status", "--porcelain"], cwd=root, text=True).strip()
     config_commit = subprocess.check_output(
         ["git", "log", "-n", "1", "--format=%H", "--", str(CONFIG_PATH)],
         cwd=root,
@@ -182,7 +185,12 @@ def collect_runtime_state(cwd: str | Path = Path(".")) -> RuntimeState:
         cwd=root,
         text=True,
     ).strip()
-    return RuntimeState(head_commit=head, config_freeze_commit=config_commit, doc_freeze_commit=doc_commit)
+    return RuntimeState(
+        head_commit=head,
+        config_freeze_commit=config_commit,
+        doc_freeze_commit=doc_commit,
+        working_tree_clean=status == "",
+    )
 
 
 def _read_json(path: str | Path) -> dict[str, Any]:
@@ -254,28 +262,47 @@ def validate_discovery_preflight(
     request: OrContDiscoveryRequest,
     *,
     runtime_state: RuntimeState | None = None,
+    output_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     if request.mode == "prepare_only":
         return prepare_only_manifest(request)
     if request.mode != "run_discovery":
         raise PermissionError(f"Unsupported mode for {HYPOTHESIS_ID}: {request.mode}")
+    if not request.expected_freeze_commit:
+        raise PermissionError("--expected-freeze-commit is required for run_discovery.")
+    if not request.expected_canonical_hash:
+        raise PermissionError("--expected-canonical-hash is required for run_discovery.")
+    runtime_state = runtime_state or collect_runtime_state()
+    if not runtime_state.working_tree_clean:
+        raise PermissionError("Working tree must be clean before run_discovery.")
+    if runtime_state.head_commit != request.expected_freeze_commit:
+        raise PermissionError(
+            "Execution freeze commit mismatch: "
+            f"expected_freeze_commit={request.expected_freeze_commit} "
+            f"actual_head_commit={runtime_state.head_commit}"
+        )
+    actual_hash = canonical_or_cont_config_hash(request.config_path)
+    if actual_hash != request.expected_canonical_hash:
+        raise PermissionError(
+            "Canonical payload hash mismatch: "
+            f"expected_canonical_hash={request.expected_canonical_hash} "
+            f"actual_canonical_hash={actual_hash}"
+        )
+    if actual_hash != EXPECTED_CANONICAL_HASH:
+        raise PermissionError("Canonical payload hash no longer matches the preregistered constant.")
+    if runtime_state.config_freeze_commit != PREREGISTRATION_COMMIT:
+        raise PermissionError("Config file was not frozen at the preregistration commit.")
+    if runtime_state.doc_freeze_commit != PREREGISTRATION_COMMIT:
+        raise PermissionError("Preregistration document was not frozen at the preregistration commit.")
+    if any(bool(value) for value in request.safety_flags.values()):
+        raise PermissionError("Safety flags must remain false.")
     validate_or_cont_period(request.period)
     if request.requested_start != DISCOVERY_START or request.requested_end != DISCOVERY_END:
         raise PermissionError("Discovery request must be exactly 2022-01-01 through 2024-12-31.")
     if tuple(request.symbols) != EXPECTED_SYMBOLS:
         raise PermissionError("Discovery symbols must be exactly QQQ and SPY.")
-    if any(bool(value) for value in request.safety_flags.values()):
-        raise PermissionError("Safety flags must remain false.")
-    runtime_state = runtime_state or collect_runtime_state()
-    if request.expected_freeze_commit != EXPECTED_FREEZE_COMMIT:
-        raise PermissionError("Expected freeze commit does not match the preregistered constant.")
-    if runtime_state.config_freeze_commit != request.expected_freeze_commit:
-        raise PermissionError("Config file was not frozen at the expected commit.")
-    if runtime_state.doc_freeze_commit != request.expected_freeze_commit:
-        raise PermissionError("Preregistration document was not frozen at the expected commit.")
-    actual_hash = canonical_or_cont_config_hash(request.config_path)
-    if request.expected_canonical_hash != EXPECTED_CANONICAL_HASH or actual_hash != request.expected_canonical_hash:
-        raise PermissionError("Canonical payload hash mismatch.")
+    if output_dir is not None:
+        _validate_final_output_absent(output_dir)
     _validate_config_payload(request.config_path)
     manifest_summary = {
         symbol: _validate_manifest_metadata(symbol, request.manifest_paths[symbol])
@@ -288,6 +315,8 @@ def validate_discovery_preflight(
         "event_study_executed": False,
         "results_written": False,
         "head_commit": runtime_state.head_commit,
+        "preregistration_commit": PREREGISTRATION_COMMIT,
+        "execution_freeze_commit": request.expected_freeze_commit,
         "freeze_commit": request.expected_freeze_commit,
         "canonical_payload_hash": actual_hash,
         "requested_start": request.requested_start,
@@ -307,8 +336,10 @@ def prepare_only_manifest(request: OrContDiscoveryRequest | None = None) -> dict
         "mode": "prepare_only",
         "event_study_executed": False,
         "results_written": False,
-        "freeze_commit": request.expected_freeze_commit,
-        "canonical_payload_hash": request.expected_canonical_hash,
+        "preregistration_commit": PREREGISTRATION_COMMIT,
+        "execution_freeze_commit": request.expected_freeze_commit,
+        "freeze_commit": request.expected_freeze_commit or PREREGISTRATION_COMMIT,
+        "canonical_payload_hash": request.expected_canonical_hash or EXPECTED_CANONICAL_HASH,
         "validation_2025_executed": False,
         "historical_2026_executed": False,
         "orders_created": False,
@@ -355,6 +386,12 @@ def _verify_required_outputs(output_dir: Path) -> None:
         raise FileNotFoundError(f"Missing HYP-OR-CONT-EVENT-01 outputs: {missing}")
 
 
+def _validate_final_output_absent(output_dir: str | Path) -> None:
+    final_dir = Path(output_dir)
+    if final_dir.exists() and any(final_dir.iterdir()):
+        raise FileExistsError(f"Output directory already exists and is not empty: {final_dir}")
+
+
 def _manifest_record(manifest: Any) -> dict[str, Any]:
     if hasattr(manifest, "to_record"):
         return dict(manifest.to_record())
@@ -378,8 +415,7 @@ def _execute_discovery_outputs(
 ) -> dict[str, Any]:
     progress = progress or ExecutionProgress()
     final_dir = Path(output_dir)
-    if final_dir.exists() and any(final_dir.iterdir()):
-        raise FileExistsError(f"Output directory already exists and is not empty: {final_dir}")
+    _validate_final_output_absent(final_dir)
     final_dir.parent.mkdir(parents=True, exist_ok=True)
     temp_dir = final_dir.parent / f".{final_dir.name}.tmp-{uuid4().hex}"
     config = OrContEventConfig()
@@ -470,6 +506,8 @@ def _execute_discovery_outputs(
             "hypothesis_id": HYPOTHESIS_ID,
             "mode": "run_discovery",
             "period": DISCOVERY_PERIOD,
+            "preregistration_commit": preflight["preregistration_commit"],
+            "execution_freeze_commit": preflight["execution_freeze_commit"],
             "freeze_commit": preflight["freeze_commit"],
             "head_commit": preflight["head_commit"],
             "canonical_payload_hash": preflight["canonical_payload_hash"],
@@ -543,7 +581,7 @@ def run_operational_discovery(
         return prepare_only_manifest(request)
     try:
         stage = progress.start("preflight")
-        preflight = validate_discovery_preflight(request, runtime_state=runtime_state)
+        preflight = validate_discovery_preflight(request, runtime_state=runtime_state, output_dir=output_dir)
         progress.end(stage, output_rows=1)
         return _execute_discovery_outputs(
             preflight,
@@ -579,8 +617,23 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="HYP-OR-CONT-EVENT-01 operational discovery runner.")
     parser.add_argument("--mode", default="prepare_only", choices=("prepare_only", "run_discovery"))
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
+    parser.add_argument("--expected-freeze-commit")
+    parser.add_argument("--expected-canonical-hash")
     args = parser.parse_args()
-    payload = run_operational_discovery(OrContDiscoveryRequest(mode=args.mode), output_dir=args.output_dir)
+    if args.mode == "run_discovery":
+        if not args.expected_freeze_commit:
+            parser.error("--expected-freeze-commit is required for run_discovery")
+        if not args.expected_canonical_hash:
+            parser.error("--expected-canonical-hash is required for run_discovery")
+    request = OrContDiscoveryRequest(
+        mode=args.mode,
+        expected_freeze_commit=args.expected_freeze_commit,
+        expected_canonical_hash=args.expected_canonical_hash,
+    )
+    try:
+        payload = run_operational_discovery(request, output_dir=args.output_dir)
+    except Exception as exc:
+        parser.exit(1, f"error: {exc}\n")
     print(json.dumps(payload, indent=2, sort_keys=True, default=str))
 
 
