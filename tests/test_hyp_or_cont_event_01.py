@@ -30,6 +30,7 @@ from src.research.hyp_or_cont_event_01 import (
     attach_cost_thresholds,
     attach_incremental_returns,
     compute_unconditional_control,
+    compute_unconditional_control_reference,
     compute_or_continuation_paths,
     detect_or_continuation_events,
     evaluate_discovery_gate,
@@ -101,6 +102,46 @@ def high_sweep_day(extra: list[dict] | None = None, date: str = "2024-07-01") ->
     )
     rows.extend(extra or [])
     return frame(rows)
+
+
+def synthetic_unconditional_inputs(*, sessions: int = 6) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
+    frames: dict[str, pd.DataFrame] = {}
+    path_rows: list[dict] = []
+    for symbol, base_price in (("QQQ", 100.0), ("SPY", 200.0)):
+        rows: list[dict] = []
+        for session_number in range(sessions):
+            day = pd.Timestamp("2024-01-02") + pd.offsets.Day(session_number)
+            date = day.strftime("%Y-%m-%d")
+            for bar_number, minute in enumerate(range(9 * 60 + 30, 16 * 60, 5)):
+                hour = minute // 60
+                minute_of_hour = minute % 60
+                price = base_price + session_number * 0.13 + bar_number * 0.017
+                rows.append(
+                    bar(
+                        f"{date} {hour:02d}:{minute_of_hour:02d}",
+                        price,
+                        price + 0.2,
+                        price - 0.2,
+                        price + 0.03,
+                    )
+                )
+            for orientation in ("continuation_long", "continuation_short"):
+                for horizon in ("15min", "30min", "60min", "session_close"):
+                    executable = ts(f"{date} 10:00")
+                    path_rows.append(
+                        {
+                            "symbol": symbol,
+                            "session_date": date,
+                            "executable_timestamp": executable,
+                            "direction_orientation": orientation,
+                            "year": 2024,
+                            "executable_timestamp_hour_bucket": "10:00",
+                            "horizon": horizon,
+                            "event_return": 0.001 if orientation == "continuation_long" else -0.001,
+                        }
+                    )
+        frames[symbol] = frame(rows)
+    return frames, pd.DataFrame(path_rows)
 
 
 def write_manifest(path: Path, symbol: str, *, status: str = "approved_for_or_fvg_backtest") -> None:
@@ -414,6 +455,74 @@ class HypOrContEvent01Tests(unittest.TestCase):
         self.assertEqual(control.iloc[0]["horizon"], "30min")
         self.assertGreaterEqual(control.iloc[0]["unconditional_sample_count"], 1)
 
+    def test_unconditional_control_optimized_matches_reference_exactly(self):
+        frames, paths = synthetic_unconditional_inputs(sessions=8)
+        reference = compute_unconditional_control_reference(frames, paths)
+        optimized = compute_unconditional_control(frames, paths, progress_interval_seconds=0)
+        pd.testing.assert_frame_equal(reference, optimized, check_dtype=False, rtol=0.0, atol=1e-12)
+        reference_incremental = attach_incremental_returns(paths, reference)
+        optimized_incremental = attach_incremental_returns(paths, optimized)
+        pd.testing.assert_series_equal(
+            reference_incremental["incremental_return"],
+            optimized_incremental["incremental_return"],
+            check_names=False,
+            check_dtype=False,
+            rtol=0.0,
+            atol=1e-12,
+        )
+        self.assertEqual(
+            int(pd.util.hash_pandas_object(reference.astype(str), index=False).sum()),
+            int(pd.util.hash_pandas_object(optimized.astype(str), index=False).sum()),
+        )
+
+    def test_unconditional_control_progress_reports_internally(self):
+        frames, paths = synthetic_unconditional_inputs(sessions=3)
+        updates: list[dict] = []
+        control = compute_unconditional_control(
+            frames,
+            paths,
+            progress_callback=lambda **payload: updates.append(payload),
+            progress_interval_seconds=0,
+        )
+        self.assertFalse(control.empty)
+        self.assertGreaterEqual(len(updates), 2)
+        self.assertIn("groups_total", updates[-1])
+        self.assertEqual(updates[-1]["groups_processed"], updates[-1]["groups_total"])
+        self.assertIn("rows_processed", updates[-1])
+        self.assertIn("memory_mb", updates[-1])
+        self.assertIn("eta_seconds", updates[-1])
+
+    def test_unconditional_control_does_not_match_2025_or_2026_when_path_year_is_2024(self):
+        frames, paths = synthetic_unconditional_inputs(sessions=1)
+        future_rows = []
+        for date in ("2025-01-02", "2026-01-02"):
+            future_rows.extend(
+                [
+                    bar(f"{date} 10:00", 500.0, 501.0, 499.0, 500.5),
+                    bar(f"{date} 10:30", 600.0, 601.0, 599.0, 600.5),
+                ]
+            )
+        frames["QQQ"] = pd.concat([frames["QQQ"], frame(future_rows)], ignore_index=True).sort_values("timestamp").reset_index(drop=True)
+        qqq_2024_paths = paths[(paths["symbol"] == "QQQ") & (paths["horizon"] == "30min")].head(1).reset_index(drop=True)
+        control = compute_unconditional_control({"QQQ": frames["QQQ"]}, qqq_2024_paths)
+        reference = compute_unconditional_control_reference({"QQQ": frames["QQQ"]}, qqq_2024_paths)
+        self.assertEqual(int(control.iloc[0]["unconditional_sample_count"]), int(reference.iloc[0]["unconditional_sample_count"]))
+        self.assertEqual(int(control.iloc[0]["year"]), 2024)
+
+    def test_unconditional_control_uses_only_requested_horizon_for_30min(self):
+        frames, paths = synthetic_unconditional_inputs(sessions=1)
+        qqq_30min = paths[(paths["symbol"] == "QQQ") & (paths["horizon"] == "30min")].head(1).reset_index(drop=True)
+        baseline = compute_unconditional_control({"QQQ": frames["QQQ"]}, qqq_30min)
+        changed = frames["QQQ"].copy()
+        late_mask = changed["timestamp"] == ts("2024-01-02 11:30")
+        changed.loc[late_mask, "close"] = 9999.0
+        shifted = compute_unconditional_control({"QQQ": changed}, qqq_30min)
+        self.assertAlmostEqual(
+            float(baseline.iloc[0]["unconditional_return"]),
+            float(shifted.iloc[0]["unconditional_return"]),
+            places=12,
+        )
+
     def test_incremental_return_is_event_minus_control(self):
         paths = pd.DataFrame(
             [
@@ -542,6 +651,33 @@ class HypOrContEvent01Tests(unittest.TestCase):
                 )
             self.assertFalse(payload["results_written"])
             self.assertFalse(output.exists())
+
+    def test_keyboard_interrupt_preserves_temp_progress_without_final_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "out"
+            request = self.make_request(root)
+            runtime = RuntimeState(EXECUTION_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+
+            def interrupting_loader(symbol: str, csv_path: Path, manifest_path: Path):
+                raise KeyboardInterrupt
+
+            payload = run_operational_discovery(
+                request,
+                output_dir=output,
+                runtime_state=runtime,
+                dataset_loader=interrupting_loader,
+                five_minute_preparer=lambda frame: frame,
+                progress=ExecutionProgress(emit_console=False),
+                raise_on_error=False,
+            )
+            self.assertTrue(payload["interrupted"])
+            self.assertFalse(payload["results_written"])
+            self.assertFalse(output.exists())
+            temp_dirs = list(root.glob(".out.tmp-*"))
+            self.assertEqual(len(temp_dirs), 1)
+            progress_payload = json.loads((temp_dirs[0] / "execution_progress.json").read_text(encoding="utf-8"))
+            self.assertTrue(any(stage.get("interrupted") for stage in progress_payload["stages"]))
 
     def test_preflight_failure_happens_before_dataset_load_and_final_output(self):
         with tempfile.TemporaryDirectory() as directory:

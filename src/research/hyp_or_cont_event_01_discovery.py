@@ -132,6 +132,13 @@ class ExecutionProgress:
         self._emit(record)
         self.persist()
 
+    def update(self, record: dict[str, Any], **extra: Any) -> None:
+        record["status"] = "running"
+        record["elapsed_seconds"] = round(float(time.perf_counter() - record.get("_perf_start", time.perf_counter())), 6)
+        record.update(extra)
+        self._emit(record)
+        self.persist()
+
     def mark_interrupted(self, *, temp_dir: Path | None = None) -> None:
         self.stages.append(
             {
@@ -468,7 +475,12 @@ def _execute_discovery_outputs(
         path_metrics = pd.concat(paths_by_symbol, ignore_index=True) if paths_by_symbol else pd.DataFrame()
 
         stage = progress.start("unconditional_control", input_rows=int(len(path_metrics)))
-        control = compute_unconditional_control(five_by_symbol, path_metrics, config)
+        control = compute_unconditional_control(
+            five_by_symbol,
+            path_metrics,
+            config,
+            progress_callback=lambda **payload: progress.update(stage, **payload),
+        )
         path_metrics = attach_incremental_returns(path_metrics, control)
         progress.end(stage, output_rows=int(len(control)))
 
@@ -555,8 +567,6 @@ def _execute_discovery_outputs(
         }
     except KeyboardInterrupt:
         progress.mark_interrupted(temp_dir=temp_dir)
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir)
         raise
     except Exception:
         if temp_dir.exists():
@@ -632,6 +642,8 @@ def main() -> None:
     )
     try:
         payload = run_operational_discovery(request, output_dir=args.output_dir)
+    except KeyboardInterrupt:
+        parser.exit(130, "error: interrupted\n")
     except Exception as exc:
         parser.exit(1, f"error: {exc}\n")
     print(json.dumps(payload, indent=2, sort_keys=True, default=str))

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
@@ -398,7 +399,7 @@ def _path_return_from_start(
     return float(-raw_return if orientation == "continuation_short" else raw_return)
 
 
-def compute_unconditional_control(
+def compute_unconditional_control_reference(
     five_minute_by_symbol: dict[str, pd.DataFrame],
     path_metrics: pd.DataFrame,
     config: OrContEventConfig | None = None,
@@ -444,6 +445,169 @@ def compute_unconditional_control(
             }
         )
     return pd.DataFrame(control_rows)
+
+
+def _control_output_columns() -> list[str]:
+    return [
+        "hypothesis_id",
+        "symbol",
+        "session_date",
+        "executable_timestamp",
+        "direction_orientation",
+        "year",
+        "executable_timestamp_hour_bucket",
+        "horizon",
+        "event_return",
+        "unconditional_return",
+        "unconditional_sample_count",
+    ]
+
+
+def _progress_eta(elapsed_seconds: float, rows_processed: int, rows_total: int) -> float | None:
+    if rows_processed <= 0 or rows_total <= 0:
+        return None
+    remaining = elapsed_seconds * max(rows_total - rows_processed, 0) / rows_processed
+    return round(float(remaining), 3)
+
+
+def compute_unconditional_control(
+    five_minute_by_symbol: dict[str, pd.DataFrame],
+    path_metrics: pd.DataFrame,
+    config: OrContEventConfig | None = None,
+    *,
+    progress_callback: Callable[..., None] | None = None,
+    progress_interval_seconds: float = 5.0,
+) -> pd.DataFrame:
+    config = config or OrContEventConfig()
+    if path_metrics.empty:
+        return pd.DataFrame(columns=_control_output_columns())
+
+    start_time = time.perf_counter()
+    needed_horizons = tuple(dict.fromkeys(path_metrics["horizon"].astype(str)))
+    requested_groups = path_metrics.loc[
+        :,
+        ["symbol", "year", "executable_timestamp_hour_bucket", "horizon"],
+    ].copy()
+    requested_groups["symbol"] = requested_groups["symbol"].astype(str).str.upper()
+    requested_groups["year"] = requested_groups["year"].astype(int)
+    requested_groups["executable_timestamp_hour_bucket"] = requested_groups["executable_timestamp_hour_bucket"].astype(str)
+    requested_groups["horizon"] = requested_groups["horizon"].astype(str)
+    requested_key_set = set(map(tuple, requested_groups.drop_duplicates().itertuples(index=False, name=None)))
+    groups_total = len(requested_key_set)
+    rows_total = int(sum(len(frame) for frame in five_minute_by_symbol.values()) * max(len(needed_horizons), 1))
+    rows_processed = 0
+    processed_requested_keys: set[tuple[str, int, str, str]] = set()
+    memory_mb = 0.0
+    last_progress_emit = 0.0
+    aggregate_parts: list[pd.DataFrame] = []
+
+    def emit_progress(*, force: bool = False) -> None:
+        nonlocal last_progress_emit
+        if progress_callback is None:
+            return
+        elapsed = time.perf_counter() - start_time
+        if not force and elapsed - last_progress_emit < progress_interval_seconds:
+            return
+        last_progress_emit = elapsed
+        progress_callback(
+            groups_total=groups_total,
+            groups_processed=min(len(processed_requested_keys), groups_total),
+            rows_processed=rows_processed,
+            elapsed_seconds=round(float(elapsed), 3),
+            memory_mb=round(float(memory_mb), 3),
+            eta_seconds=_progress_eta(elapsed, rows_processed, rows_total),
+        )
+
+    emit_progress(force=True)
+    for symbol, frame in five_minute_by_symbol.items():
+        symbol_key = symbol.upper()
+        data = add_session_columns(frame, config.first_candle_config()).reset_index(drop=True)
+        if data.empty:
+            continue
+        timestamps = pd.to_datetime(data["timestamp"], utc=True)
+        local = timestamps.dt.tz_convert(config.timezone)
+        years = local.dt.year.astype(int).to_numpy()
+        hour_buckets = local.dt.strftime("%H:00").to_numpy()
+        opens = data["open"].astype(float).to_numpy()
+        closes = data["close"].astype(float).to_numpy()
+        positions = np.arange(len(data), dtype=np.int64)
+        timestamp_index = pd.Index(timestamps)
+        memory_mb += float(data.memory_usage(index=True, deep=True).sum()) / (1024.0 * 1024.0)
+
+        for horizon in needed_horizons:
+            delta = _horizon_delta(horizon)
+            if delta is None:
+                target_positions = np.full(len(data), len(data) - 1, dtype=np.int64)
+                valid = target_positions > positions
+            else:
+                target_positions = timestamp_index.get_indexer(timestamps + delta)
+                valid = target_positions > positions
+            future_closes = np.full(len(data), np.nan, dtype=float)
+            future_closes[valid] = closes[target_positions[valid]]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                raw_returns = future_closes / opens - 1.0
+            valid &= np.isfinite(raw_returns)
+            rows_processed += int(len(data))
+            if valid.any():
+                universe = pd.DataFrame(
+                    {
+                        "symbol": symbol_key,
+                        "year": years[valid],
+                        "executable_timestamp_hour_bucket": hour_buckets[valid],
+                        "horizon": horizon,
+                        "raw_return": raw_returns[valid],
+                    }
+                )
+                grouped = (
+                    universe.groupby(
+                        ["symbol", "year", "executable_timestamp_hour_bucket", "horizon"],
+                        sort=True,
+                    )["raw_return"]
+                    .agg(raw_unconditional_return="mean", unconditional_sample_count="count")
+                    .reset_index()
+                )
+                aggregate_parts.append(grouped)
+                processed_requested_keys.update(
+                    key for key in map(tuple, grouped.iloc[:, :4].itertuples(index=False, name=None)) if key in requested_key_set
+                )
+            emit_progress()
+
+    aggregates = pd.concat(aggregate_parts, ignore_index=True) if aggregate_parts else pd.DataFrame()
+    output = path_metrics.loc[
+        :,
+        [
+            "symbol",
+            "session_date",
+            "executable_timestamp",
+            "direction_orientation",
+            "year",
+            "executable_timestamp_hour_bucket",
+            "horizon",
+            "event_return",
+        ],
+    ].copy()
+    output.insert(0, "hypothesis_id", HYPOTHESIS_ID)
+    output["symbol"] = output["symbol"].astype(str).str.upper()
+    output["year"] = output["year"].astype(int)
+    output["executable_timestamp_hour_bucket"] = output["executable_timestamp_hour_bucket"].astype(str)
+    output["horizon"] = output["horizon"].astype(str)
+    output["event_return"] = output["event_return"].astype(float)
+    if aggregates.empty:
+        output["unconditional_return"] = np.nan
+        output["unconditional_sample_count"] = 0
+    else:
+        output = output.merge(
+            aggregates,
+            on=["symbol", "year", "executable_timestamp_hour_bucket", "horizon"],
+            how="left",
+            sort=False,
+        )
+        sign = np.where(output["direction_orientation"].astype(str) == "continuation_short", -1.0, 1.0)
+        output["unconditional_return"] = output["raw_unconditional_return"].astype(float) * sign
+        output["unconditional_sample_count"] = output["unconditional_sample_count"].fillna(0).astype(int)
+        output = output.drop(columns=["raw_unconditional_return"])
+    emit_progress(force=True)
+    return output.loc[:, _control_output_columns()]
 
 
 def attach_incremental_returns(path_metrics: pd.DataFrame, control: pd.DataFrame) -> pd.DataFrame:
