@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import subprocess
 import sys
@@ -47,6 +48,9 @@ from src.research.hyp_or_cont_event_01 import (
 
 CONFIG_PATH = Path("configs/research/hypotheses/HYP-OR-CONT-EVENT-01.yaml")
 EXECUTION_FREEZE_COMMIT = "f" * 40
+DISCOVERY_ARTIFACT_DIR = Path("artifacts/research/HYP-OR-CONT-EVENT-01/discovery_2022_2024")
+DISCOVERY_RESULTS_DOC = Path("docs/HYP_OR_CONT_EVENT_01_DISCOVERY_RESULTS.md")
+RESEARCH_REGISTRY_PATH = Path("docs/RESEARCH_HYPOTHESIS_REGISTRY.md")
 
 
 def ts(value: str) -> pd.Timestamp:
@@ -887,6 +891,109 @@ class HypOrContEvent01Tests(unittest.TestCase):
         )
         enriched = attach_cost_thresholds(paths)
         self.assertGreater(enriched.iloc[0]["baseline_cost_return"], enriched.iloc[1]["baseline_cost_return"])
+
+    def read_artifact_csv(self, name: str) -> list[dict]:
+        with (DISCOVERY_ARTIFACT_DIR / name).open(newline="", encoding="utf-8") as handle:
+            return list(csv.DictReader(handle))
+
+    def test_frozen_discovery_artifacts_close_as_failed_without_future_contamination(self):
+        expected_files = {
+            "run_manifest.json",
+            "dataset_manifest_snapshot.json",
+            "config_snapshot.yaml",
+            "confirmed_events.csv",
+            "path_metrics.csv",
+            "unconditional_control.csv",
+            "incremental_metrics.csv",
+            "metrics_by_symbol.csv",
+            "metrics_by_year.csv",
+            "bootstrap_intervals.csv",
+            "cost_threshold_comparison.csv",
+            "discovery_gate.json",
+            "execution_progress.json",
+            "checksums.json",
+        }
+        self.assertTrue(DISCOVERY_ARTIFACT_DIR.exists())
+        self.assertEqual({path.name for path in DISCOVERY_ARTIFACT_DIR.iterdir()}, expected_files)
+
+        run_manifest = json.loads((DISCOVERY_ARTIFACT_DIR / "run_manifest.json").read_text(encoding="utf-8"))
+        gate = json.loads((DISCOVERY_ARTIFACT_DIR / "discovery_gate.json").read_text(encoding="utf-8"))
+        events = self.read_artifact_csv("confirmed_events.csv")
+        path_metrics = self.read_artifact_csv("path_metrics.csv")
+
+        self.assertEqual(len(events), 1496)
+        self.assertEqual(len(path_metrics), 5967)
+        self.assertEqual({row["symbol"] for row in events}, {"QQQ", "SPY"})
+        self.assertEqual({row["symbol"] for row in path_metrics}, {"QQQ", "SPY"})
+        self.assertEqual(min(row["session_date"] for row in events), "2022-01-03")
+        self.assertEqual(max(row["session_date"] for row in events), "2024-12-31")
+        self.assertEqual({row["year"] for row in path_metrics}, {"2022", "2023", "2024"})
+        self.assertEqual(run_manifest["requested_start"], "2022-01-01")
+        self.assertEqual(run_manifest["requested_end"], "2024-12-31")
+        self.assertEqual(run_manifest["primary_horizon"], "30min")
+        self.assertTrue(run_manifest["results_written"])
+        self.assertFalse(run_manifest["strategy_created"])
+        self.assertFalse(run_manifest["validation_2025_executed"])
+        self.assertFalse(run_manifest["historical_2026_executed"])
+        self.assertFalse(run_manifest["orders_created"])
+        self.assertFalse(run_manifest["position_sizing_used"])
+        self.assertFalse(any(run_manifest["safety_flags"].values()))
+
+        self.assertEqual(run_manifest["preregistration_commit"], EXPECTED_FREEZE_COMMIT)
+        self.assertEqual(run_manifest["execution_freeze_commit"], "ec8803fae45ec7f07f338350e6d77b80ec6a8929")
+        self.assertEqual(run_manifest["canonical_payload_hash"], EXPECTED_CANONICAL_HASH)
+        self.assertEqual(gate["classification"], "discovery_failed")
+        self.assertFalse(gate["passed"])
+        self.assertEqual(gate["primary_horizon"], "30min")
+        self.assertFalse(gate["validation_2025_unlocked"])
+        self.assertFalse(gate["paper_eligible"])
+        self.assertFalse(gate["live_eligible"])
+        self.assertTrue(gate["secondary_horizons_cannot_override_primary_fail"])
+        self.assertTrue(gate["criteria"]["no_2025_or_2026_contamination"])
+
+    def test_primary_results_fail_costs_and_do_not_promote_short(self):
+        primary_metrics = [
+            row for row in self.read_artifact_csv("incremental_metrics.csv") if row["horizon"] == "30min"
+        ]
+        cost_rows = [row for row in self.read_artifact_csv("cost_threshold_comparison.csv") if row["horizon"] == "30min"]
+        bootstrap_rows = [row for row in self.read_artifact_csv("bootstrap_intervals.csv") if row["horizon"] == "30min"]
+
+        self.assertEqual(len(primary_metrics), 4)
+        self.assertTrue(all(row["baseline_cost_passed"] == "False" for row in cost_rows))
+        self.assertTrue(all(row["stress_cost_passed"] == "False" for row in cost_rows))
+        self.assertTrue(all(float(row["bootstrap_ci_low"]) < 0 < float(row["bootstrap_ci_high"]) for row in bootstrap_rows))
+
+        by_key = {(row["symbol"], row["direction_orientation"]): row for row in primary_metrics}
+        self.assertLess(float(by_key[("QQQ", "continuation_long")]["mean"]), 0)
+        self.assertGreater(float(by_key[("SPY", "continuation_long")]["mean"]), 0)
+        self.assertGreater(float(by_key[("QQQ", "continuation_short")]["mean"]), 0)
+        self.assertGreater(float(by_key[("SPY", "continuation_short")]["mean"]), 0)
+        self.assertLess(
+            float(by_key[("QQQ", "continuation_short")]["mean"]),
+            float(by_key[("QQQ", "continuation_short")]["mean_baseline_cost_return"]),
+        )
+        self.assertLess(
+            float(by_key[("SPY", "continuation_short")]["mean"]),
+            float(by_key[("SPY", "continuation_short")]["mean_baseline_cost_return"]),
+        )
+
+    def test_discovery_report_and_registry_preserve_closure_controls(self):
+        report = DISCOVERY_RESULTS_DOC.read_text(encoding="utf-8")
+        registry = RESEARCH_REGISTRY_PATH.read_text(encoding="utf-8")
+        combined = report + "\n" + registry
+
+        self.assertIn("discovery_failed", report)
+        self.assertIn("causal_post_confirmation_continuation_failed", registry)
+        self.assertIn("Primary horizon `30min`", registry)
+        self.assertIn("validation_2025_unlocked=false", registry)
+        self.assertIn("paper/live/strategy all false", registry)
+        self.assertIn(EXPECTED_FREEZE_COMMIT, combined)
+        self.assertIn("ec8803fae45ec7f07f338350e6d77b80ec6a8929", combined)
+        self.assertIn(EXPECTED_CANONICAL_HASH, combined)
+        self.assertIn("Secondary horizons cannot override a primary-horizon fail.", report)
+        self.assertIn("not a new strategy and not a new approved hypothesis", report)
+        self.assertIn("No `HYP-OR-CONT-SHORT-02` may be created", registry)
+        self.assertIn("2025 remains closed. 2026 was not executed.", report)
 
 
 if __name__ == "__main__":

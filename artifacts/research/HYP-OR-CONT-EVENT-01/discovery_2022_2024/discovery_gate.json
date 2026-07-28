@@ -1,0 +1,25 @@
+{
+  "all_required": true,
+  "classification": "discovery_failed",
+  "criteria": {
+    "bootstrap_grouped_by_session_not_strongly_contradictory": true,
+    "continuation_long_expected_sign": false,
+    "continuation_short_expected_sign": true,
+    "effect_in_at_least_two_of_three_years": false,
+    "incremental_return_vs_control_positive": true,
+    "mean_return_exceeds_baseline_round_trip_cost": false,
+    "no_2025_or_2026_contamination": true,
+    "no_lookahead": true,
+    "not_dominated_by_single_year": false,
+    "qqq_and_spy_same_sign": true
+  },
+  "hypothesis_id": "HYP-OR-CONT-EVENT-01",
+  "live_eligible": false,
+  "orders_created": false,
+  "paper_eligible": false,
+  "passed": false,
+  "position_sizing_used": false,
+  "primary_horizon": "30min",
+  "secondary_horizons_cannot_override_primary_fail": true,
+  "validation_2025_unlocked": false
+}

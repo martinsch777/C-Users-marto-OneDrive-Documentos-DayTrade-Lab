@@ -1,0 +1,167 @@
+{
+  "generated_at_utc": "2026-07-28T15:30:27.144714Z",
+  "schema_version": 1,
+  "stages": [
+    {
+      "elapsed_seconds": 0.488085,
+      "end_time": "2026-07-28T15:28:51.185397Z",
+      "output_rows": 1,
+      "stage": "preflight",
+      "start_time": "2026-07-28T15:28:50.696936Z",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 32.483831,
+      "end_time": "2026-07-28T15:29:23.674953Z",
+      "input_rows": null,
+      "output_rows": 438330,
+      "stage": "load_QQQ",
+      "start_time": "2026-07-28T15:28:51.191124Z",
+      "status": "completed",
+      "symbol": "QQQ"
+    },
+    {
+      "elapsed_seconds": 0.569619,
+      "end_time": "2026-07-28T15:29:24.246640Z",
+      "input_rows": 438330,
+      "output_rows": 292410,
+      "stage": "crop_discovery_period",
+      "start_time": "2026-07-28T15:29:23.677028Z",
+      "status": "completed",
+      "symbol": "QQQ"
+    },
+    {
+      "elapsed_seconds": 2.92637,
+      "end_time": "2026-07-28T15:29:27.174802Z",
+      "input_rows": 292410,
+      "output_rows": 58482,
+      "stage": "resample_1m_to_5m",
+      "start_time": "2026-07-28T15:29:24.248435Z",
+      "status": "completed",
+      "symbol": "QQQ"
+    },
+    {
+      "elapsed_seconds": 4.378695,
+      "end_time": "2026-07-28T15:29:31.554982Z",
+      "exclusions": 209,
+      "input_rows": 58482,
+      "output_rows": 748,
+      "stage": "detect_confirmed_events",
+      "start_time": "2026-07-28T15:29:27.176293Z",
+      "status": "completed",
+      "symbol": "QQQ"
+    },
+    {
+      "elapsed_seconds": 5.641858,
+      "end_time": "2026-07-28T15:29:37.198466Z",
+      "horizons": [
+        "30min",
+        "15min",
+        "60min",
+        "session_close"
+      ],
+      "input_rows": 748,
+      "output_rows": 2982,
+      "stage": "path_metrics",
+      "start_time": "2026-07-28T15:29:31.556605Z",
+      "status": "completed",
+      "symbol": "QQQ"
+    },
+    {
+      "elapsed_seconds": 30.893328,
+      "end_time": "2026-07-28T15:30:08.093490Z",
+      "input_rows": null,
+      "output_rows": 437940,
+      "stage": "load_SPY",
+      "start_time": "2026-07-28T15:29:37.200170Z",
+      "status": "completed",
+      "symbol": "SPY"
+    },
+    {
+      "elapsed_seconds": 0.325969,
+      "end_time": "2026-07-28T15:30:08.421473Z",
+      "input_rows": 437940,
+      "output_rows": 292020,
+      "stage": "crop_discovery_period",
+      "start_time": "2026-07-28T15:30:08.095505Z",
+      "status": "completed",
+      "symbol": "SPY"
+    },
+    {
+      "elapsed_seconds": 2.965458,
+      "end_time": "2026-07-28T15:30:11.388654Z",
+      "input_rows": 292020,
+      "output_rows": 58404,
+      "stage": "resample_1m_to_5m",
+      "start_time": "2026-07-28T15:30:08.423202Z",
+      "status": "completed",
+      "symbol": "SPY"
+    },
+    {
+      "elapsed_seconds": 4.480096,
+      "end_time": "2026-07-28T15:30:15.870621Z",
+      "exclusions": 218,
+      "input_rows": 58404,
+      "output_rows": 748,
+      "stage": "detect_confirmed_events",
+      "start_time": "2026-07-28T15:30:11.390546Z",
+      "status": "completed",
+      "symbol": "SPY"
+    },
+    {
+      "elapsed_seconds": 5.867874,
+      "end_time": "2026-07-28T15:30:21.740439Z",
+      "horizons": [
+        "30min",
+        "15min",
+        "60min",
+        "session_close"
+      ],
+      "input_rows": 748,
+      "output_rows": 2985,
+      "stage": "path_metrics",
+      "start_time": "2026-07-28T15:30:15.872559Z",
+      "status": "completed",
+      "symbol": "SPY"
+    },
+    {
+      "elapsed_seconds": 2.628448,
+      "end_time": "2026-07-28T15:30:24.373457Z",
+      "eta_seconds": 0.0,
+      "groups_processed": 115,
+      "groups_total": 115,
+      "input_rows": 5967,
+      "memory_mb": 19.285,
+      "output_rows": 5967,
+      "rows_processed": 467544,
+      "stage": "unconditional_control",
+      "start_time": "2026-07-28T15:30:21.745002Z",
+      "status": "completed"
+    },
+    {
+      "bootstrap_grouped_by": "session_date",
+      "bootstrap_replicates_processed": 10500,
+      "bootstrap_replicates_total": 10500,
+      "elapsed_seconds": 2.414776,
+      "end_time": "2026-07-28T15:30:26.789707Z",
+      "eta_seconds": 0.0,
+      "groups_processed": 21,
+      "groups_total": 21,
+      "input_rows": 5967,
+      "memory_mb": 3.101,
+      "output_rows": 21,
+      "stage": "aggregations_and_bootstrap",
+      "start_time": "2026-07-28T15:30:24.374931Z",
+      "status": "completed"
+    },
+    {
+      "elapsed_seconds": 0.353052,
+      "end_time": "2026-07-28T15:30:27.144181Z",
+      "input_rows": 7463,
+      "output_rows": 14,
+      "stage": "atomic_write",
+      "start_time": "2026-07-28T15:30:26.791131Z",
+      "status": "completed"
+    }
+  ]
+}

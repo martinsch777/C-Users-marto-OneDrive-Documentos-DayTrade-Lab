@@ -1,0 +1,36 @@
+{
+  "canonical_payload_hash": "d76572e7534e8cf66104ceb2d30dd08a7c0b080fc4460e496b58a08d3736060b",
+  "event_study_executed": true,
+  "execution_freeze_commit": "ec8803fae45ec7f07f338350e6d77b80ec6a8929",
+  "freeze_commit": "ec8803fae45ec7f07f338350e6d77b80ec6a8929",
+  "head_commit": "ec8803fae45ec7f07f338350e6d77b80ec6a8929",
+  "historical_2026_executed": false,
+  "horizons": [
+    "30min",
+    "15min",
+    "60min",
+    "session_close"
+  ],
+  "hypothesis_id": "HYP-OR-CONT-EVENT-01",
+  "mode": "run_discovery",
+  "orders_created": false,
+  "period": "discovery_2022_2024",
+  "position_sizing_used": false,
+  "preregistration_commit": "fe13dfe94a6b679a5abf33f079ef8497e368b4f5",
+  "primary_horizon": "30min",
+  "requested_end": "2024-12-31",
+  "requested_start": "2022-01-01",
+  "results_written": true,
+  "safety_flags": {
+    "broker_connected": false,
+    "live_trading": false,
+    "orders_sent": false,
+    "paper_broker_enabled": false
+  },
+  "strategy_created": false,
+  "symbols": [
+    "QQQ",
+    "SPY"
+  ],
+  "validation_2025_executed": false
+}

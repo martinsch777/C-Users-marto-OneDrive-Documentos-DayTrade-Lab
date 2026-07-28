@@ -1,0 +1,70 @@
+{
+  "inputs": [
+    {
+      "path": "configs\\research\\hypotheses\\HYP-OR-CONT-EVENT-01.yaml",
+      "sha256": "3f1eab345746e5655aa3fd0297fd0c12d3184a580fbcd75847185f44309c6a32"
+    },
+    {
+      "path": "docs\\HYP_OR_CONT_EVENT_01_PREREGISTRATION.md",
+      "sha256": "f4d72b213e2be58165df8c88cd945df014bd09aa2306251e339e326f40f8283b"
+    },
+    {
+      "path": "data\\manifests\\QQQ_1min_2022-01-01_2026-07-06_curated_manifest.json",
+      "sha256": "aa003d83a6d01ed21e8f76e7d6a2f6617a7d97941a7d007e77b56a94ace15e83"
+    },
+    {
+      "path": "data\\manifests\\SPY_1min_2022-01-01_2026-07-06_curated_manifest.json",
+      "sha256": "bd174fbf01cbf609cc900b62f91af6c6ae68905bc7cc90a9b1e3133e8af70a9e"
+    }
+  ],
+  "outputs": [
+    {
+      "path": "run_manifest.json",
+      "sha256": "44bc8c72c3dba1b43542cfd302305271d431ba46aa3f3ac692c7f53158145f0d"
+    },
+    {
+      "path": "dataset_manifest_snapshot.json",
+      "sha256": "2d8a52767a6c7e6c97b3615abecaeb77c9aad5cabe92357e7e96ffee320ebbd3"
+    },
+    {
+      "path": "config_snapshot.yaml",
+      "sha256": "3f1eab345746e5655aa3fd0297fd0c12d3184a580fbcd75847185f44309c6a32"
+    },
+    {
+      "path": "confirmed_events.csv",
+      "sha256": "f4a70c30df1602fea8ab14c240b1f535ff4cf52ee130fccd8564197b0f8a9a93"
+    },
+    {
+      "path": "path_metrics.csv",
+      "sha256": "f7f3586c6249abd9b259fe9feb6ea4378b91937afb9654d11c7d96dcc6b875e5"
+    },
+    {
+      "path": "unconditional_control.csv",
+      "sha256": "b7a88ed0c9c8c766567c9b48ad48cdb08eb6ea44ebbb264a2377ff7d3c73ee0a"
+    },
+    {
+      "path": "incremental_metrics.csv",
+      "sha256": "59d138c02dcc4970f2dc724db029bbce6c83f2a58ee42356607f20a3c98264d8"
+    },
+    {
+      "path": "metrics_by_symbol.csv",
+      "sha256": "fb25d82875351fb87e50897a82da1b9080085c4488ead48e561cdb4f74d334be"
+    },
+    {
+      "path": "metrics_by_year.csv",
+      "sha256": "ffd956ed0ab28a31b0306cf8dad3222ca872320a2c5c8a545cc4ef7f6b0cff17"
+    },
+    {
+      "path": "bootstrap_intervals.csv",
+      "sha256": "fb02a76a3475e588ccbccfa150c1fd465f34e6dc7287ad6af5196215cdad34df"
+    },
+    {
+      "path": "cost_threshold_comparison.csv",
+      "sha256": "b1fc8d99784e5c3a6db59c4149ddb7cdda0c628e5fd1fcc498f370307895bcf0"
+    },
+    {
+      "path": "discovery_gate.json",
+      "sha256": "65a5d9ef6fb95de0e41b2969d81b7be5ccf81e677f9276120abbf093a816a289"
+    }
+  ]
+}

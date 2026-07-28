@@ -1,0 +1,17 @@
+symbol,direction_orientation,horizon,bootstrap_ci_low,bootstrap_ci_high,bootstrap_grouped_by,bootstrap_seed
+QQQ,continuation_long,15min,-0.000381548091595964,0.00015644802728861291,session_date,17
+QQQ,continuation_long,30min,-0.00045338466135328185,0.0002623231842357639,session_date,17
+QQQ,continuation_long,60min,-0.00031165998934264686,0.0006420140309657965,session_date,17
+QQQ,continuation_long,session_close,-0.00022654072104896807,0.0017763943786014255,session_date,17
+QQQ,continuation_short,15min,-0.00023370876611869873,0.00042737935335921805,session_date,17
+QQQ,continuation_short,30min,-0.00020419060051970393,0.00061847319697166,session_date,17
+QQQ,continuation_short,60min,-0.00041018265084656814,0.0006232564582200045,session_date,17
+QQQ,continuation_short,session_close,-0.0006625609379523539,0.0014871159660906118,session_date,17
+SPY,continuation_long,15min,-8.662156278525058e-05,0.0002863063068422207,session_date,17
+SPY,continuation_long,30min,-0.00016384287870488358,0.0003230184279505426,session_date,17
+SPY,continuation_long,60min,-0.00022647771795042683,0.0004440851453484783,session_date,17
+SPY,continuation_long,session_close,-0.00010112154271905261,0.0012747748034175103,session_date,17
+SPY,continuation_short,15min,-9.839974222214544e-05,0.00035022706023669003,session_date,17
+SPY,continuation_short,30min,-6.144518125462781e-05,0.0005211226208632426,session_date,17
+SPY,continuation_short,60min,-0.0002942645154772717,0.0004991932301616089,session_date,17
+SPY,continuation_short,session_close,-0.0004817237199458307,0.0011920574447455484,session_date,17

@@ -24,7 +24,7 @@ Permanent safety state:
 | HYP-FCR-04 | First Candle Rule refinement: structural stop behind sweep | 2026-07-22 | QQQ/SPY 2022-2024 family batch | Not opened; family discovery failed | 2026 observed_contaminated_non_decisional | 1025 discovery trades | Baseline net PnL -USD 70.38; expectancy R -0.1022; PF 0.952 | discovery_failed | Failed expectancy, profit factor, per-symbol net positivity, stress, yearly stability, and concentration gates | `configs/research/hypotheses/HYP-FCR-04.yaml`; `docs/HYP_FIRST_CANDLE_REFINEMENT_FAMILY_DISCOVERY_RESULTS.md`; `artifacts/research/FCR-REFINEMENT-FAMILY-01/discovery_2022_2024/HYP-FCR-04`; `src/research/hyp_first_candle_variants.py` | Closed unless a separately preregistered future family is created before seeing new independent data |
 | FCR-REFINEMENT-FAMILY-01 | Limited post-discovery family for FCR-02, FCR-03, and FCR-04 | 2026-07-22 | QQQ/SPY 2022-2024 family batch | Not opened; no variant selected | 2026 observed_contaminated_non_decisional | 3 variants run | No variant passed individual discovery gate; selected hypothesis null | discovery_failed | All three variants failed mandatory gates | `configs/research/hypotheses/FCR-REFINEMENT-FAMILY-01.yaml`; `docs/HYP_FIRST_CANDLE_REFINEMENT_FAMILY_DISCOVERY_RESULTS.md`; `artifacts/research/FCR-REFINEMENT-FAMILY-01/discovery_2022_2024`; `src/research/hyp_first_candle_family_discovery.py`; `src/research/hyp_first_candle_family_runner.py` | Family closed; validation remains blocked and no additional variants may be added after results |
 | HYP-FCR-EVENT-01 | Opening Range Sweep and Post-Event Path Study | 2026-07-23 | QQQ/SPY 2022-2024 event discovery audited | Blocked; not opened | Blocked; not opened | 8498 events; 42490 path rows | EVENT-07 and EVENT-08 produced stable diagnostic continuation effects, but no preregistered economic threshold exists | event_study_completed_stable_not_economic | Non-strategy event study; final classification stable_but_not_economic; no validation, no paper/live eligibility | `configs/research/hypotheses/HYP-FCR-EVENT-01.yaml`; `docs/HYP_FIRST_CANDLE_EVENT_STUDY_PREREGISTRATION.md`; `docs/HYP_FIRST_CANDLE_EVENT_STUDY_RESULTS.md`; `artifacts/research/HYP-FCR-EVENT-01/discovery_2022_2024`; `src/research/hyp_first_candle_event_study.py`; `src/research/hyp_first_candle_event_runner.py`; `src/research/hyp_first_candle_event_postrun_audit.py` | 2025/2026 remain closed; conversion to strategy requires separate preregistration before opening independent data |
-| HYP-OR-CONT-EVENT-01 | Opening Range sweep without opposing FVG post-confirmation continuation | 2026-07-27 | Not run; preregistered only | Blocked; not opened | 2026 contaminated/non-decisional and blocked | 0 events | Causal post-confirmation event-study preregistration only | preregistered_not_executed | Not evaluated; created to avoid EVENT-07/08 lookahead by measuring from executable timestamp | `configs/research/hypotheses/HYP-OR-CONT-EVENT-01.yaml`; `docs/HYP_OR_CONT_EVENT_01_PREREGISTRATION.md`; `src/research/hyp_or_cont_event_01.py` | Future discovery run only after explicit approval; no strategy conversion without separate preregistration |
+| HYP-OR-CONT-EVENT-01 | Opening Range sweep without opposing FVG post-confirmation continuation | 2026-07-27; preregistration commit `fe13dfe94a6b679a5abf33f079ef8497e368b4f5`; execution freeze `ec8803fae45ec7f07f338350e6d77b80ec6a8929`; hash `d76572e7534e8cf66104ceb2d30dd08a7c0b080fc4460e496b58a08d3736060b` | QQQ/SPY 2022-2024 discovery | Blocked; 2025 not opened; `validation_2025_unlocked=false` | 2026 not executed and blocked | 1496 confirmed events; 5967 path rows | Primary horizon `30min`; `passed=false`; status `discovery_failed`; paper/live/strategy all false | causal_post_confirmation_continuation_failed | `continuation_long` did not maintain expected sign; annual effect insufficient; mean return below baseline cost; annual concentration; primary horizon FAIL. `continuation_short` was only a descriptive secondary observation, not a strategy or approved hypothesis. | `configs/research/hypotheses/HYP-OR-CONT-EVENT-01.yaml`; `docs/HYP_OR_CONT_EVENT_01_PREREGISTRATION.md`; `docs/HYP_OR_CONT_EVENT_01_DISCOVERY_RESULTS.md`; `artifacts/research/HYP-OR-CONT-EVENT-01/discovery_2022_2024`; `src/research/hyp_or_cont_event_01.py` | Closed unless new external evidence or forward data justifies a separately preregistered review; do not create `HYP-OR-CONT-SHORT-02` or select only short retrospectively |
 
 ## Methodological Lock
 
@@ -35,3 +35,19 @@ For HYP-GAP-ASYM-01 and HYP-GAP-OR-01, 2025 is already contaminated because it m
 ## GAP Family Closure
 
 The GAP branch is closed after HYP-GAP-03, HYP-GAP-ASYM-01, and HYP-GAP-OR-01. The project will not continue adjusting gap thresholds, gap direction filters, Opening Range duration, normalizations, quarterly filters, or retrospective combinations. Historical code, reports, and outputs remain preserved as research records.
+
+## First Candle / Opening Range Sweep Family Closure
+
+The current family state is closed:
+
+- HYP-FCR-01: discovery_failed
+- HYP-FCR-02: discovery_failed
+- HYP-FCR-03: discovery_failed
+- HYP-FCR-04: discovery_failed
+- HYP-FCR-EVENT-01: stable_but_not_economic
+- HYP-OR-CONT-EVENT-01: discovery_failed
+
+No `HYP-OR-CONT-SHORT-02` may be created from this discovery result, and the
+short side may not be selected retrospectively as a rescued strategy. Any future
+review of this family must come from new external evidence or forward data, not
+from additional cuts over 2022-2024.

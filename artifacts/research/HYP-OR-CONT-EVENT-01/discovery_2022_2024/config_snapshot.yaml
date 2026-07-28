@@ -1,0 +1,167 @@
+schema_version: 1
+hypothesis_id: HYP-OR-CONT-EVENT-01
+name: "Opening Range Sweep Without Opposing FVG: Post-Confirmation Continuation"
+status: preregistered_not_executed
+created_at: "2026-07-27"
+type: event_study
+strategy_status: non_strategy
+research_use: hypothesis_generating
+source_parent:
+  hypothesis_id: HYP-FCR-EVENT-01
+  final_commit: dc15fd8
+  final_classification: event_study_completed_stable_not_economic
+  source_events:
+    - EVENT-07
+    - EVENT-08
+paper_eligible: false
+live_eligible: false
+validation_2025_eligible: false
+canonical_payload_hash: d76572e7534e8cf66104ceb2d30dd08a7c0b080fc4460e496b58a08d3736060b
+timeframe:
+  research: 5min
+session:
+  calendar: US_EQUITY_RTH
+  timezone: America/New_York
+  regular_hours: "09:30-16:00"
+  opening_range:
+    start: "09:30"
+    end_exclusive: "10:00"
+    required_bars: 6
+  observation_start: "10:00"
+rules_frozen_from:
+  sweep_low: HYP-FCR-EVENT-01_EVENT-07
+  sweep_high: HYP-FCR-EVENT-01_EVENT-08
+  bullish_fvg: HYP-FCR-EVENT-01
+  bearish_fvg: HYP-FCR-EVENT-01
+  tick_policy: HYP-FCR-EVENT-01
+  equality_policy: HYP-FCR-EVENT-01
+  timestamps_and_sessions: HYP-FCR-EVENT-01
+causal_signal_definitions:
+  short:
+    swept_side: low
+    sweep_rule: low <= opening_low
+    confirmation_window: three_complete_5min_bars_immediately_after_sweep
+    opposing_fvg_absent: bullish_fvg
+    confirmation_timestamp: close_of_third_confirmation_bar
+    executable_timestamp: open_of_next_5min_bar_after_confirmation
+    direction_orientation: continuation_short
+  long:
+    swept_side: high
+    sweep_rule: high >= opening_high
+    confirmation_window: three_complete_5min_bars_immediately_after_sweep
+    opposing_fvg_absent: bearish_fvg
+    confirmation_timestamp: close_of_third_confirmation_bar
+    executable_timestamp: open_of_next_5min_bar_after_confirmation
+    direction_orientation: continuation_long
+deduplication:
+  first_confirmed_signal_per_symbol_session_only: true
+  maximum_primary_events_per_symbol_session: 1
+  independent_of_side: true
+required_event_fields:
+  - sweep_timestamp
+  - confirmation_timestamp
+  - executable_timestamp
+  - swept_side
+  - confirmation_bar_count
+  - reason_for_exclusion
+lookahead_controls:
+  event_existence_uses_prices_after_executable_timestamp: false
+  event_exists_before_third_confirmation_bar_closes: false
+  future_path_data_allowed_for_event_selection: false
+horizons:
+  primary: 30min
+  secondary:
+    - 15min
+    - 60min
+    - session_close
+  measured_from: executable_timestamp
+  overnight_allowed: false
+  five_min_not_primary_approval_criterion: true
+periods:
+  discovery_2022_2024:
+    start: "2022-01-01"
+    end: "2024-12-31"
+    status: preregistered_not_executed
+  validation_2025:
+    start: "2025-01-01"
+    end: "2025-12-31"
+    status: blocked_not_opened
+  historical_2026:
+    start: "2026-01-01"
+    end: "2026-12-31"
+    status: contaminated_non_decisional_blocked
+  shadow_forward:
+    earliest_start: after_freeze_commit_for_HYP_OR_CONT_EVENT_01
+    status: not_started
+unconditional_control:
+  preregistered: true
+  matched_by:
+    - symbol
+    - year
+    - executable_timestamp_hour_bucket
+    - horizon
+  metrics:
+    - event_return
+    - unconditional_return
+    - incremental_return
+  execute_now: false
+metrics:
+  - count
+  - session_count
+  - mean
+  - median
+  - directional_win_rate
+  - MFE
+  - MAE
+  - bootstrap_CI_grouped_by_session_date
+  - by_symbol
+  - by_year
+  - year_concentration
+  - incremental_return_vs_control
+  - horizon_availability
+costs:
+  source: configs/research/hypotheses/HYP-FCR-01.yaml
+  tick_size: 0.01
+  baseline:
+    commission_rate_per_side: 0.0001
+    slippage_ticks_per_execution: 1
+    round_trip_commission_rate: 0.0002
+    round_trip_slippage_ticks: 2
+    round_trip_slippage_dollars_per_share: 0.02
+    round_trip_cost_return_formula: "0.0002 + 0.02 / executable_price"
+  stress:
+    commission_rate_per_side: 0.0002
+    slippage_ticks_per_execution: 2
+    round_trip_commission_rate: 0.0004
+    round_trip_slippage_ticks: 4
+    round_trip_slippage_dollars_per_share: 0.04
+    round_trip_cost_return_formula: "0.0004 + 0.04 / executable_price"
+discovery_gate:
+  primary_horizon: 30min
+  all_required: true
+  criteria:
+    continuation_short_expected_sign: positive
+    continuation_long_expected_sign: positive
+    qqq_and_spy_same_sign: true
+    effect_in_at_least_two_of_three_years: true
+    incremental_return_vs_control_positive: true
+    mean_return_exceeds_baseline_round_trip_cost: true
+    not_dominated_by_single_year: true
+    bootstrap_grouped_by_session_not_strongly_contradictory: true
+    no_lookahead: true
+    no_2025_or_2026_contamination: true
+  secondary_horizons_cannot_override_primary_fail: true
+blocked_actions:
+  execute_discovery_now: true
+  execute_validation_2025: true
+  execute_2026: true
+  create_strategy: true
+  create_orders: true
+  backtest_pnl: true
+  optimize: true
+  commit_or_push: true
+safety_flags:
+  live_trading: false
+  broker_connected: false
+  orders_sent: false
+  paper_broker_enabled: false
