@@ -26,9 +26,14 @@ from src.research.hyp_or_cont_event_01 import (
     HORIZONS,
     PRIMARY_HORIZON,
     OrContEventConfig,
+    aggregate_incremental_metrics,
+    aggregate_incremental_metrics_reference,
     assert_no_strategy_columns,
     attach_cost_thresholds,
     attach_incremental_returns,
+    bootstrap_mean_by_session,
+    bootstrap_mean_by_session_reference,
+    compute_aggregation_and_bootstrap_outputs,
     compute_unconditional_control,
     compute_unconditional_control_reference,
     compute_or_continuation_paths,
@@ -142,6 +147,17 @@ def synthetic_unconditional_inputs(*, sessions: int = 6) -> tuple[dict[str, pd.D
                     )
         frames[symbol] = frame(rows)
     return frames, pd.DataFrame(path_rows)
+
+
+def synthetic_bootstrap_path_metrics(*, sessions: int = 6) -> pd.DataFrame:
+    frames, paths = synthetic_unconditional_inputs(sessions=sessions)
+    control = compute_unconditional_control(frames, paths)
+    enriched = attach_incremental_returns(paths, control)
+    enriched["maximum_favorable_excursion"] = enriched["event_return"].astype(float).abs() + 0.002
+    enriched["maximum_adverse_excursion"] = -enriched["event_return"].astype(float).abs() - 0.001
+    enriched["baseline_cost_return"] = 0.0004
+    enriched["stress_cost_return"] = 0.0008
+    return enriched
 
 
 def write_manifest(path: Path, symbol: str, *, status: str = "approved_for_or_fvg_backtest") -> None:
@@ -542,6 +558,85 @@ class HypOrContEvent01Tests(unittest.TestCase):
         merged = attach_incremental_returns(paths, control)
         self.assertAlmostEqual(merged.iloc[0]["incremental_return"], 0.006)
 
+    def test_bootstrap_mean_by_session_matches_reference(self):
+        sample = pd.DataFrame(
+            [
+                {"session_date": "2024-01-02", "event_return": 0.01},
+                {"session_date": "2024-01-02", "event_return": 0.02},
+                {"session_date": "2024-01-03", "event_return": -0.01},
+                {"session_date": "2024-01-04", "event_return": 0.03},
+            ]
+        )
+        reference = bootstrap_mean_by_session_reference(sample, value_column="event_return", n_bootstrap=25, seed=17)
+        optimized = bootstrap_mean_by_session(sample, value_column="event_return", n_bootstrap=25, seed=17)
+        self.assertAlmostEqual(reference[0], optimized[0], places=12)
+        self.assertAlmostEqual(reference[1], optimized[1], places=12)
+
+    def test_aggregate_incremental_metrics_optimized_matches_reference(self):
+        path_metrics = synthetic_bootstrap_path_metrics(sessions=5)
+        for group_by in (("symbol", "direction_orientation", "horizon"), ("symbol",), ("year",)):
+            with self.subTest(group_by=group_by):
+                reference = aggregate_incremental_metrics_reference(path_metrics, group_by=group_by, n_bootstrap=25, seed=17)
+                optimized = aggregate_incremental_metrics(path_metrics, group_by=group_by, n_bootstrap=25, seed=17)
+                pd.testing.assert_frame_equal(reference, optimized, check_dtype=False, rtol=0.0, atol=1e-12)
+                self.assertTrue((optimized["bootstrap_seed"] == 17).all())
+
+    def test_aggregation_stage_outputs_match_reference_and_gate(self):
+        path_metrics = synthetic_bootstrap_path_metrics(sessions=6)
+        outputs = compute_aggregation_and_bootstrap_outputs(path_metrics, n_bootstrap=25, seed=17, progress_interval_seconds=0)
+        reference_incremental = aggregate_incremental_metrics_reference(
+            path_metrics,
+            group_by=("symbol", "direction_orientation", "horizon"),
+            n_bootstrap=25,
+            seed=17,
+        )
+        reference_symbol = aggregate_incremental_metrics_reference(path_metrics, group_by=("symbol",), n_bootstrap=25, seed=17)
+        reference_year = aggregate_incremental_metrics_reference(path_metrics, group_by=("year",), n_bootstrap=25, seed=17)
+        pd.testing.assert_frame_equal(reference_incremental, outputs["incremental_metrics"], check_dtype=False, rtol=0.0, atol=1e-12)
+        pd.testing.assert_frame_equal(reference_symbol, outputs["metrics_by_symbol"], check_dtype=False, rtol=0.0, atol=1e-12)
+        pd.testing.assert_frame_equal(reference_year, outputs["metrics_by_year"], check_dtype=False, rtol=0.0, atol=1e-12)
+        reference_bootstrap = reference_incremental.loc[
+            :,
+            [
+                "symbol",
+                "direction_orientation",
+                "horizon",
+                "bootstrap_ci_low",
+                "bootstrap_ci_high",
+                "bootstrap_grouped_by",
+                "bootstrap_seed",
+            ],
+        ]
+        pd.testing.assert_frame_equal(reference_bootstrap, outputs["bootstrap_intervals"], check_dtype=False, rtol=0.0, atol=1e-12)
+        self.assertEqual(outputs["gate"], evaluate_discovery_gate(path_metrics, reference_bootstrap))
+        self.assertEqual(
+            int(pd.util.hash_pandas_object(outputs["incremental_metrics"].astype(str), index=False).sum()),
+            int(pd.util.hash_pandas_object(reference_incremental.astype(str), index=False).sum()),
+        )
+
+    def test_aggregation_progress_reports_replicates_and_session_grouping(self):
+        path_metrics = synthetic_bootstrap_path_metrics(sessions=4)
+        updates: list[dict] = []
+        outputs = compute_aggregation_and_bootstrap_outputs(
+            path_metrics,
+            n_bootstrap=11,
+            seed=17,
+            progress_callback=lambda **payload: updates.append(payload),
+            progress_interval_seconds=0,
+        )
+        self.assertFalse(outputs["incremental_metrics"].empty)
+        self.assertGreaterEqual(len(updates), 2)
+        self.assertEqual(updates[-1]["groups_processed"], updates[-1]["groups_total"])
+        self.assertEqual(updates[-1]["bootstrap_replicates_processed"], updates[-1]["bootstrap_replicates_total"])
+        self.assertEqual(int(outputs["incremental_metrics"]["session_count"].min()), 4)
+        self.assertTrue((outputs["incremental_metrics"]["bootstrap_grouped_by"] == "session_date").all())
+
+    def test_aggregation_outputs_do_not_introduce_2025_or_2026(self):
+        path_metrics = synthetic_bootstrap_path_metrics(sessions=3)
+        outputs = compute_aggregation_and_bootstrap_outputs(path_metrics, n_bootstrap=10, seed=17)
+        self.assertEqual(set(outputs["metrics_by_year"]["year"].astype(int)), {2024})
+        self.assertTrue(outputs["gate"]["criteria"]["no_2025_or_2026_contamination"])
+
     def test_gate_passes_only_when_all_primary_criteria_pass(self):
         rows = []
         for symbol in ("QQQ", "SPY"):
@@ -677,6 +772,35 @@ class HypOrContEvent01Tests(unittest.TestCase):
             temp_dirs = list(root.glob(".out.tmp-*"))
             self.assertEqual(len(temp_dirs), 1)
             progress_payload = json.loads((temp_dirs[0] / "execution_progress.json").read_text(encoding="utf-8"))
+            self.assertTrue(any(stage.get("interrupted") for stage in progress_payload["stages"]))
+
+    def test_keyboard_interrupt_during_bootstrap_preserves_progress_without_final_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "out"
+            request = self.make_request(root)
+            runtime = RuntimeState(EXECUTION_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            with patch(
+                "src.research.hyp_or_cont_event_01_discovery.compute_aggregation_and_bootstrap_outputs",
+                side_effect=KeyboardInterrupt,
+            ):
+                payload = run_operational_discovery(
+                    request,
+                    output_dir=output,
+                    runtime_state=runtime,
+                    dataset_loader=self.fake_loader,
+                    five_minute_preparer=lambda frame: frame,
+                    n_bootstrap=10,
+                    progress=ExecutionProgress(emit_console=False),
+                    raise_on_error=False,
+                )
+            self.assertTrue(payload["interrupted"])
+            self.assertFalse(payload["results_written"])
+            self.assertFalse(output.exists())
+            temp_dirs = list(root.glob(".out.tmp-*"))
+            self.assertEqual(len(temp_dirs), 1)
+            progress_payload = json.loads((temp_dirs[0] / "execution_progress.json").read_text(encoding="utf-8"))
+            self.assertTrue(any(stage.get("stage") == "aggregations_and_bootstrap" for stage in progress_payload["stages"]))
             self.assertTrue(any(stage.get("interrupted") for stage in progress_payload["stages"]))
 
     def test_preflight_failure_happens_before_dataset_load_and_final_output(self):

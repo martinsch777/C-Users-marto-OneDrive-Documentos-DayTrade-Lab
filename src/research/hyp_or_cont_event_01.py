@@ -632,7 +632,7 @@ def attach_incremental_returns(path_metrics: pd.DataFrame, control: pd.DataFrame
     return merged
 
 
-def bootstrap_mean_by_session(
+def bootstrap_mean_by_session_reference(
     frame: pd.DataFrame,
     *,
     value_column: str,
@@ -651,7 +651,40 @@ def bootstrap_mean_by_session(
     return float(np.percentile(sampled, 2.5)), float(np.percentile(sampled, 97.5))
 
 
-def aggregate_incremental_metrics(
+def bootstrap_mean_by_session(
+    frame: pd.DataFrame,
+    *,
+    value_column: str,
+    n_bootstrap: int = 500,
+    seed: int = 17,
+) -> tuple[float, float]:
+    if frame.empty:
+        return np.nan, np.nan
+    sessions = np.array(sorted(frame["session_date"].astype(str).unique()))
+    session_count = len(sessions)
+    if session_count == 0:
+        return np.nan, np.nan
+    by_session = (
+        frame.assign(_bootstrap_value=frame[value_column].astype(float))
+        .groupby(frame["session_date"].astype(str), sort=True)["_bootstrap_value"]
+        .agg(session_sum="sum", session_non_null_count="count")
+        .reindex(sessions)
+    )
+    session_sums = by_session["session_sum"].to_numpy(dtype=float)
+    session_counts = by_session["session_non_null_count"].to_numpy(dtype=float)
+    session_index = pd.Index(sessions)
+    rng = np.random.default_rng(seed)
+    draws = np.empty((n_bootstrap, session_count), dtype=np.int64)
+    for replicate in range(n_bootstrap):
+        draws[replicate, :] = session_index.get_indexer(rng.choice(sessions, size=session_count, replace=True))
+    sampled_counts = session_counts[draws].sum(axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sampled_means = session_sums[draws].sum(axis=1) / sampled_counts
+    sampled_means[sampled_counts <= 0] = np.nan
+    return float(np.percentile(sampled_means, 2.5)), float(np.percentile(sampled_means, 97.5))
+
+
+def aggregate_incremental_metrics_reference(
     path_metrics: pd.DataFrame,
     *,
     group_by: tuple[str, ...] = ("symbol", "direction_orientation", "horizon"),
@@ -682,7 +715,7 @@ def aggregate_incremental_metrics(
     for key, group in path_metrics.groupby(list(group_by), sort=True):
         if not isinstance(key, tuple):
             key = (key,)
-        ci_low, ci_high = bootstrap_mean_by_session(group, value_column="event_return", n_bootstrap=n_bootstrap, seed=seed)
+        ci_low, ci_high = bootstrap_mean_by_session_reference(group, value_column="event_return", n_bootstrap=n_bootstrap, seed=seed)
         record = {column: value for column, value in zip(group_by, key)}
         record.update(
             {
@@ -704,6 +737,137 @@ def aggregate_incremental_metrics(
             }
         )
         rows.append(record)
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _aggregate_output_columns(group_by: tuple[str, ...]) -> list[str]:
+    return [
+        *group_by,
+        "count",
+        "session_count",
+        "mean",
+        "median",
+        "directional_win_rate",
+        "mean_mfe",
+        "mean_mae",
+        "mean_unconditional_return",
+        "mean_incremental_return",
+        "mean_baseline_cost_return",
+        "mean_stress_cost_return",
+        "bootstrap_ci_low",
+        "bootstrap_ci_high",
+        "bootstrap_grouped_by",
+        "bootstrap_seed",
+    ]
+
+
+def _bootstrap_ci_from_session_sums(
+    sessions: np.ndarray,
+    session_sums: np.ndarray,
+    session_counts: np.ndarray,
+    *,
+    n_bootstrap: int,
+    seed: int,
+) -> tuple[float, float]:
+    session_count = len(sessions)
+    if session_count == 0:
+        return np.nan, np.nan
+    session_index = pd.Index(sessions)
+    rng = np.random.default_rng(seed)
+    draws = np.empty((n_bootstrap, session_count), dtype=np.int64)
+    for replicate in range(n_bootstrap):
+        draws[replicate, :] = session_index.get_indexer(rng.choice(sessions, size=session_count, replace=True))
+    sampled_counts = session_counts[draws].sum(axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sampled_means = session_sums[draws].sum(axis=1) / sampled_counts
+    sampled_means[sampled_counts <= 0] = np.nan
+    return float(np.percentile(sampled_means, 2.5)), float(np.percentile(sampled_means, 97.5))
+
+
+def aggregate_incremental_metrics(
+    path_metrics: pd.DataFrame,
+    *,
+    group_by: tuple[str, ...] = ("symbol", "direction_orientation", "horizon"),
+    n_bootstrap: int = 500,
+    seed: int = 17,
+    progress_callback: Callable[..., None] | None = None,
+    progress_interval_seconds: float = 5.0,
+) -> pd.DataFrame:
+    columns = _aggregate_output_columns(group_by)
+    if path_metrics.empty:
+        return pd.DataFrame(columns=columns)
+    start_time = time.perf_counter()
+    groups = list(path_metrics.groupby(list(group_by), sort=True))
+    groups_total = len(groups)
+    bootstrap_replicates_total = groups_total * int(n_bootstrap)
+    groups_processed = 0
+    bootstrap_replicates_processed = 0
+    memory_mb = float(path_metrics.memory_usage(index=True, deep=True).sum()) / (1024.0 * 1024.0)
+    last_progress_emit = 0.0
+    rows: list[dict[str, Any]] = []
+
+    def emit_progress(*, force: bool = False) -> None:
+        nonlocal last_progress_emit
+        if progress_callback is None:
+            return
+        elapsed = time.perf_counter() - start_time
+        if not force and elapsed - last_progress_emit < progress_interval_seconds:
+            return
+        last_progress_emit = elapsed
+        progress_callback(
+            groups_total=groups_total,
+            groups_processed=groups_processed,
+            bootstrap_replicates_total=bootstrap_replicates_total,
+            bootstrap_replicates_processed=bootstrap_replicates_processed,
+            elapsed_seconds=round(float(elapsed), 3),
+            eta_seconds=_progress_eta(elapsed, bootstrap_replicates_processed, bootstrap_replicates_total),
+            memory_mb=round(memory_mb, 3),
+        )
+
+    emit_progress(force=True)
+    for key, group in groups:
+        if not isinstance(key, tuple):
+            key = (key,)
+        event_values = group["event_return"].astype(float)
+        sessions = np.array(sorted(group["session_date"].astype(str).unique()))
+        session_aggregates = (
+            pd.DataFrame({"session_date": group["session_date"].astype(str), "event_return": event_values})
+            .groupby("session_date", sort=True)["event_return"]
+            .agg(session_sum="sum", session_non_null_count="count")
+            .reindex(sessions)
+        )
+        ci_low, ci_high = _bootstrap_ci_from_session_sums(
+            sessions,
+            session_aggregates["session_sum"].to_numpy(dtype=float),
+            session_aggregates["session_non_null_count"].to_numpy(dtype=float),
+            n_bootstrap=n_bootstrap,
+            seed=seed,
+        )
+        record = {column: value for column, value in zip(group_by, key)}
+        record.update(
+            {
+                "count": int(len(group)),
+                "session_count": int(group["session_date"].nunique()),
+                "mean": float(event_values.mean()),
+                "median": float(event_values.median()),
+                "directional_win_rate": float((event_values > 0).mean()),
+                "mean_mfe": float(group["maximum_favorable_excursion"].mean()),
+                "mean_mae": float(group["maximum_adverse_excursion"].mean()),
+                "mean_unconditional_return": float(group["unconditional_return"].mean()) if "unconditional_return" in group else np.nan,
+                "mean_incremental_return": float(group["incremental_return"].mean()) if "incremental_return" in group else np.nan,
+                "mean_baseline_cost_return": float(group["baseline_cost_return"].mean()) if "baseline_cost_return" in group else np.nan,
+                "mean_stress_cost_return": float(group["stress_cost_return"].mean()) if "stress_cost_return" in group else np.nan,
+                "bootstrap_ci_low": ci_low,
+                "bootstrap_ci_high": ci_high,
+                "bootstrap_grouped_by": "session_date",
+                "bootstrap_seed": int(seed),
+            }
+        )
+        rows.append(record)
+        groups_processed += 1
+        bootstrap_replicates_processed += int(n_bootstrap)
+        emit_progress()
+    emit_progress(force=True)
     return pd.DataFrame(rows, columns=columns)
 
 
@@ -824,6 +988,105 @@ def evaluate_discovery_gate(
         "orders_created": False,
         "position_sizing_used": False,
     }
+
+
+def _count_groups(frame: pd.DataFrame, group_by: tuple[str, ...]) -> int:
+    if frame.empty:
+        return 0
+    return int(frame.groupby(list(group_by), sort=True).ngroups)
+
+
+def compute_aggregation_and_bootstrap_outputs(
+    path_metrics: pd.DataFrame,
+    *,
+    n_bootstrap: int = 500,
+    seed: int = 17,
+    progress_callback: Callable[..., None] | None = None,
+    progress_interval_seconds: float = 5.0,
+) -> dict[str, Any]:
+    start_time = time.perf_counter()
+    group_specs = (
+        ("incremental_metrics", ("symbol", "direction_orientation", "horizon")),
+        ("metrics_by_symbol", ("symbol",)),
+        ("metrics_by_year", ("year",)),
+    )
+    group_totals = {name: _count_groups(path_metrics, group_by) for name, group_by in group_specs}
+    groups_total = int(sum(group_totals.values()))
+    bootstrap_replicates_total = int(groups_total * n_bootstrap)
+    groups_completed_before = 0
+    replicates_completed_before = 0
+    memory_mb = float(path_metrics.memory_usage(index=True, deep=True).sum()) / (1024.0 * 1024.0) if not path_metrics.empty else 0.0
+    last_progress_emit = 0.0
+
+    def emit_progress(
+        *,
+        local_groups_total: int = 0,
+        local_groups_processed: int = 0,
+        local_replicates_total: int = 0,
+        local_replicates_processed: int = 0,
+        force: bool = False,
+    ) -> None:
+        nonlocal last_progress_emit
+        if progress_callback is None:
+            return
+        elapsed = time.perf_counter() - start_time
+        if not force and elapsed - last_progress_emit < progress_interval_seconds:
+            return
+        last_progress_emit = elapsed
+        groups_processed = min(groups_completed_before + local_groups_processed, groups_total)
+        replicates_processed = min(replicates_completed_before + local_replicates_processed, bootstrap_replicates_total)
+        progress_callback(
+            groups_total=groups_total,
+            groups_processed=groups_processed,
+            bootstrap_replicates_total=bootstrap_replicates_total,
+            bootstrap_replicates_processed=replicates_processed,
+            elapsed_seconds=round(float(elapsed), 3),
+            eta_seconds=_progress_eta(elapsed, replicates_processed, bootstrap_replicates_total),
+            memory_mb=round(memory_mb, 3),
+        )
+
+    outputs: dict[str, Any] = {}
+    emit_progress(force=True)
+    for name, group_by in group_specs:
+        local_total = group_totals[name]
+
+        def child_progress(**payload: Any) -> None:
+            emit_progress(
+                local_groups_total=local_total,
+                local_groups_processed=int(payload.get("groups_processed", 0)),
+                local_replicates_total=int(payload.get("bootstrap_replicates_total", 0)),
+                local_replicates_processed=int(payload.get("bootstrap_replicates_processed", 0)),
+            )
+
+        outputs[name] = aggregate_incremental_metrics(
+            path_metrics,
+            group_by=group_by,
+            n_bootstrap=n_bootstrap,
+            seed=seed,
+            progress_callback=child_progress,
+            progress_interval_seconds=progress_interval_seconds,
+        )
+        groups_completed_before += local_total
+        replicates_completed_before += local_total * int(n_bootstrap)
+        emit_progress(force=True)
+
+    incremental_metrics = outputs["incremental_metrics"]
+    outputs["bootstrap_intervals"] = incremental_metrics.loc[
+        :,
+        [
+            "symbol",
+            "direction_orientation",
+            "horizon",
+            "bootstrap_ci_low",
+            "bootstrap_ci_high",
+            "bootstrap_grouped_by",
+            "bootstrap_seed",
+        ],
+    ].copy()
+    outputs["cost_comparison"] = cost_threshold_comparison(path_metrics)
+    outputs["gate"] = evaluate_discovery_gate(path_metrics, outputs["bootstrap_intervals"])
+    emit_progress(force=True)
+    return outputs
 
 
 def assert_no_strategy_columns(frame: pd.DataFrame) -> None:

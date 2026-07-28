@@ -30,16 +30,14 @@ from src.research.hyp_or_cont_event_01 import (
     PRIMARY_HORIZON,
     SAFETY_FLAGS,
     OrContEventConfig,
-    aggregate_incremental_metrics,
     assert_no_strategy_columns,
     attach_cost_thresholds,
     attach_incremental_returns,
     canonical_or_cont_config_hash,
+    compute_aggregation_and_bootstrap_outputs,
     compute_or_continuation_paths,
     compute_unconditional_control,
-    cost_threshold_comparison,
     detect_or_continuation_events,
-    evaluate_discovery_gate,
     filter_discovery_period,
     validate_or_cont_period,
 )
@@ -485,33 +483,18 @@ def _execute_discovery_outputs(
         progress.end(stage, output_rows=int(len(control)))
 
         stage = progress.start("aggregations_and_bootstrap", input_rows=int(len(path_metrics)), bootstrap_grouped_by="session_date")
-        incremental_metrics = aggregate_incremental_metrics(
+        aggregation_outputs = compute_aggregation_and_bootstrap_outputs(
             path_metrics,
-            group_by=("symbol", "direction_orientation", "horizon"),
             n_bootstrap=n_bootstrap,
             seed=bootstrap_seed,
+            progress_callback=lambda **payload: progress.update(stage, **payload),
         )
-        metrics_by_symbol = aggregate_incremental_metrics(path_metrics, group_by=("symbol",), n_bootstrap=n_bootstrap, seed=bootstrap_seed)
-        metrics_by_year = aggregate_incremental_metrics(path_metrics, group_by=("year",), n_bootstrap=n_bootstrap, seed=bootstrap_seed)
-        bootstrap_intervals = aggregate_incremental_metrics(
-            path_metrics,
-            group_by=("symbol", "direction_orientation", "horizon"),
-            n_bootstrap=n_bootstrap,
-            seed=bootstrap_seed,
-        ).loc[
-            :,
-            [
-                "symbol",
-                "direction_orientation",
-                "horizon",
-                "bootstrap_ci_low",
-                "bootstrap_ci_high",
-                "bootstrap_grouped_by",
-                "bootstrap_seed",
-            ],
-        ]
-        cost_comparison = cost_threshold_comparison(path_metrics)
-        gate = evaluate_discovery_gate(path_metrics, bootstrap_intervals)
+        incremental_metrics = aggregation_outputs["incremental_metrics"]
+        metrics_by_symbol = aggregation_outputs["metrics_by_symbol"]
+        metrics_by_year = aggregation_outputs["metrics_by_year"]
+        bootstrap_intervals = aggregation_outputs["bootstrap_intervals"]
+        cost_comparison = aggregation_outputs["cost_comparison"]
+        gate = aggregation_outputs["gate"]
         progress.end(stage, output_rows=int(len(incremental_metrics) + len(metrics_by_symbol) + len(metrics_by_year)))
 
         run_manifest = {
