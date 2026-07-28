@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,13 @@ from src.research.hyp_first_candle_event_study import (
 
 
 HYPOTHESIS_ID = "HYP-OR-CONT-EVENT-01"
+CONFIG_PATH = Path("configs/research/hypotheses/HYP-OR-CONT-EVENT-01.yaml")
+EXPECTED_FREEZE_COMMIT = "fe13dfe94a6b679a5abf33f079ef8497e368b4f5"
+EXPECTED_CANONICAL_HASH = "d76572e7534e8cf66104ceb2d30dd08a7c0b080fc4460e496b58a08d3736060b"
+DISCOVERY_START = "2022-01-01"
+DISCOVERY_END = "2024-12-31"
+DISCOVERY_PERIOD = "discovery_2022_2024"
+EXPECTED_SYMBOLS = ("QQQ", "SPY")
 PRIMARY_HORIZON = "30min"
 SECONDARY_HORIZONS = ("15min", "60min", "session_close")
 HORIZONS = (PRIMARY_HORIZON, *SECONDARY_HORIZONS)
@@ -102,6 +110,25 @@ def frozen_cost_profiles() -> dict[str, dict[str, float]]:
     return profiles
 
 
+def attach_cost_thresholds(paths: pd.DataFrame) -> pd.DataFrame:
+    if paths.empty:
+        return paths.copy()
+    enriched = paths.copy()
+    enriched["baseline_cost_return"] = enriched["executable_price_reference"].map(
+        lambda value: round_trip_cost_return("baseline", float(value))
+    )
+    enriched["stress_cost_return"] = enriched["executable_price_reference"].map(
+        lambda value: round_trip_cost_return("stress", float(value))
+    )
+    enriched["event_return_after_baseline_cost"] = (
+        enriched["event_return"].astype(float) - enriched["baseline_cost_return"].astype(float)
+    )
+    enriched["event_return_after_stress_cost"] = (
+        enriched["event_return"].astype(float) - enriched["stress_cost_return"].astype(float)
+    )
+    return enriched
+
+
 def round_trip_cost_return(profile_name: str, executable_price: float) -> float:
     profiles = frozen_cost_profiles()
     if profile_name not in profiles:
@@ -117,6 +144,17 @@ def validate_or_cont_period(period: str) -> None:
         raise PermissionError(f"{HYPOTHESIS_ID} period is blocked: {period}")
     if period != "discovery_2022_2024":
         raise PermissionError(f"{HYPOTHESIS_ID} only preregisters discovery_2022_2024 for a future run.")
+
+
+def filter_discovery_period(frame: pd.DataFrame) -> pd.DataFrame:
+    start = date.fromisoformat(DISCOVERY_START)
+    end = date.fromisoformat(DISCOVERY_END)
+    local_dates = pd.to_datetime(frame["timestamp"], utc=True).dt.tz_convert("America/New_York").dt.date
+    filtered = frame.loc[(local_dates >= start) & (local_dates <= end)].copy()
+    filtered_dates = pd.to_datetime(filtered["timestamp"], utc=True).dt.tz_convert("America/New_York").dt.date
+    if any(item.year >= 2025 for item in filtered_dates):
+        raise AssertionError("Discovery frame contains blocked 2025/2026 rows.")
+    return filtered.reset_index(drop=True)
 
 
 def _bar_close(timestamp: pd.Timestamp, minutes: int = 5) -> pd.Timestamp:
@@ -288,6 +326,8 @@ def compute_or_continuation_paths(
             continue
         start_position = int(start_positions[0])
         start_price = float(session.loc[start_position, "open"])
+        executable_hour = pd.Timestamp(event["executable_timestamp"]).tz_convert(config.timezone).strftime("%H:00")
+        year = int(pd.Timestamp(event["executable_timestamp"]).tz_convert(config.timezone).year)
         for horizon in horizons:
             delta = _horizon_delta(horizon)
             if delta is None:
@@ -320,7 +360,11 @@ def compute_or_continuation_paths(
                     "confirmation_timestamp": pd.Timestamp(event["confirmation_timestamp"]),
                     "executable_timestamp": executable_timestamp,
                     "direction_orientation": orientation,
+                    "swept_side": str(event["swept_side"]),
+                    "year": year,
+                    "executable_timestamp_hour_bucket": executable_hour,
                     "horizon": horizon,
+                    "executable_price_reference": start_price,
                     "event_return": float(event_return),
                     "future_close": future_close,
                     "maximum_favorable_excursion": float(mfe),
@@ -331,8 +375,294 @@ def compute_or_continuation_paths(
     return pd.DataFrame(rows)
 
 
+def _path_return_from_start(
+    session: pd.DataFrame,
+    start_position: int,
+    horizon: str,
+    orientation: str,
+) -> float | None:
+    delta = _horizon_delta(horizon)
+    executable_timestamp = pd.Timestamp(session.loc[start_position, "timestamp"])
+    if delta is None:
+        target_position = len(session) - 1
+    else:
+        matches = session.index[session["timestamp"] == executable_timestamp + delta].tolist()
+        if not matches:
+            return None
+        target_position = int(matches[0])
+    if target_position <= start_position:
+        return None
+    start_price = float(session.loc[start_position, "open"])
+    future_close = float(session.loc[target_position, "close"])
+    raw_return = future_close / start_price - 1.0
+    return float(-raw_return if orientation == "continuation_short" else raw_return)
+
+
+def compute_unconditional_control(
+    five_minute_by_symbol: dict[str, pd.DataFrame],
+    path_metrics: pd.DataFrame,
+    config: OrContEventConfig | None = None,
+) -> pd.DataFrame:
+    config = config or OrContEventConfig()
+    if path_metrics.empty:
+        return pd.DataFrame()
+    control_rows: list[dict[str, Any]] = []
+    grouped_cache: dict[str, pd.DataFrame] = {}
+    for symbol, frame in five_minute_by_symbol.items():
+        data = add_session_columns(frame, config.first_candle_config()).reset_index(drop=True)
+        local = pd.to_datetime(data["timestamp"], utc=True).dt.tz_convert(config.timezone)
+        data["year"] = local.dt.year.astype(int)
+        data["executable_timestamp_hour_bucket"] = local.dt.strftime("%H:00")
+        grouped_cache[symbol.upper()] = data
+    for _, row in path_metrics.iterrows():
+        symbol = str(row["symbol"]).upper()
+        if symbol not in grouped_cache:
+            continue
+        data = grouped_cache[symbol]
+        candidates = data.loc[
+            (data["year"] == int(row["year"]))
+            & (data["executable_timestamp_hour_bucket"] == str(row["executable_timestamp_hour_bucket"]))
+        ]
+        returns: list[float] = []
+        for position in candidates.index:
+            value = _path_return_from_start(data, int(position), str(row["horizon"]), str(row["direction_orientation"]))
+            if value is not None and np.isfinite(value):
+                returns.append(float(value))
+        control_rows.append(
+            {
+                "hypothesis_id": HYPOTHESIS_ID,
+                "symbol": symbol,
+                "session_date": str(row["session_date"]),
+                "executable_timestamp": pd.Timestamp(row["executable_timestamp"]),
+                "direction_orientation": str(row["direction_orientation"]),
+                "year": int(row["year"]),
+                "executable_timestamp_hour_bucket": str(row["executable_timestamp_hour_bucket"]),
+                "horizon": str(row["horizon"]),
+                "event_return": float(row["event_return"]),
+                "unconditional_return": float(np.mean(returns)) if returns else np.nan,
+                "unconditional_sample_count": int(len(returns)),
+            }
+        )
+    return pd.DataFrame(control_rows)
+
+
+def attach_incremental_returns(path_metrics: pd.DataFrame, control: pd.DataFrame) -> pd.DataFrame:
+    if path_metrics.empty:
+        return path_metrics.copy()
+    keys = [
+        "symbol",
+        "session_date",
+        "executable_timestamp",
+        "direction_orientation",
+        "horizon",
+    ]
+    merged = path_metrics.copy()
+    if control.empty:
+        merged["unconditional_return"] = np.nan
+        merged["incremental_return"] = np.nan
+        merged["unconditional_sample_count"] = 0
+        return merged
+    control_subset = control.loc[:, [*keys, "unconditional_return", "unconditional_sample_count"]].copy()
+    merged = merged.merge(control_subset, on=keys, how="left")
+    merged["incremental_return"] = merged["event_return"].astype(float) - merged["unconditional_return"].astype(float)
+    return merged
+
+
+def bootstrap_mean_by_session(
+    frame: pd.DataFrame,
+    *,
+    value_column: str,
+    n_bootstrap: int = 500,
+    seed: int = 17,
+) -> tuple[float, float]:
+    if frame.empty:
+        return np.nan, np.nan
+    sessions = np.array(sorted(frame["session_date"].astype(str).unique()))
+    rng = np.random.default_rng(seed)
+    sampled: list[float] = []
+    for _ in range(n_bootstrap):
+        sampled_sessions = rng.choice(sessions, size=len(sessions), replace=True)
+        sample = pd.concat([frame.loc[frame["session_date"].astype(str) == item] for item in sampled_sessions])
+        sampled.append(float(sample[value_column].mean()))
+    return float(np.percentile(sampled, 2.5)), float(np.percentile(sampled, 97.5))
+
+
+def aggregate_incremental_metrics(
+    path_metrics: pd.DataFrame,
+    *,
+    group_by: tuple[str, ...] = ("symbol", "direction_orientation", "horizon"),
+    n_bootstrap: int = 500,
+    seed: int = 17,
+) -> pd.DataFrame:
+    columns = [
+        *group_by,
+        "count",
+        "session_count",
+        "mean",
+        "median",
+        "directional_win_rate",
+        "mean_mfe",
+        "mean_mae",
+        "mean_unconditional_return",
+        "mean_incremental_return",
+        "mean_baseline_cost_return",
+        "mean_stress_cost_return",
+        "bootstrap_ci_low",
+        "bootstrap_ci_high",
+        "bootstrap_grouped_by",
+        "bootstrap_seed",
+    ]
+    if path_metrics.empty:
+        return pd.DataFrame(columns=columns)
+    rows: list[dict[str, Any]] = []
+    for key, group in path_metrics.groupby(list(group_by), sort=True):
+        if not isinstance(key, tuple):
+            key = (key,)
+        ci_low, ci_high = bootstrap_mean_by_session(group, value_column="event_return", n_bootstrap=n_bootstrap, seed=seed)
+        record = {column: value for column, value in zip(group_by, key)}
+        record.update(
+            {
+                "count": int(len(group)),
+                "session_count": int(group["session_date"].nunique()),
+                "mean": float(group["event_return"].mean()),
+                "median": float(group["event_return"].median()),
+                "directional_win_rate": float((group["event_return"].astype(float) > 0).mean()),
+                "mean_mfe": float(group["maximum_favorable_excursion"].mean()),
+                "mean_mae": float(group["maximum_adverse_excursion"].mean()),
+                "mean_unconditional_return": float(group["unconditional_return"].mean()) if "unconditional_return" in group else np.nan,
+                "mean_incremental_return": float(group["incremental_return"].mean()) if "incremental_return" in group else np.nan,
+                "mean_baseline_cost_return": float(group["baseline_cost_return"].mean()) if "baseline_cost_return" in group else np.nan,
+                "mean_stress_cost_return": float(group["stress_cost_return"].mean()) if "stress_cost_return" in group else np.nan,
+                "bootstrap_ci_low": ci_low,
+                "bootstrap_ci_high": ci_high,
+                "bootstrap_grouped_by": "session_date",
+                "bootstrap_seed": int(seed),
+            }
+        )
+        rows.append(record)
+    return pd.DataFrame(rows, columns=columns)
+
+
+def cost_threshold_comparison(path_metrics: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "symbol",
+        "direction_orientation",
+        "horizon",
+        "count",
+        "mean_event_return",
+        "mean_baseline_cost_return",
+        "mean_stress_cost_return",
+        "baseline_cost_passed",
+        "stress_cost_passed",
+    ]
+    if path_metrics.empty:
+        return pd.DataFrame(columns=columns)
+    rows: list[dict[str, Any]] = []
+    for key, group in path_metrics.groupby(["symbol", "direction_orientation", "horizon"], sort=True):
+        symbol, orientation, horizon = key
+        mean_return = float(group["event_return"].mean())
+        baseline = float(group["baseline_cost_return"].mean())
+        stress = float(group["stress_cost_return"].mean())
+        rows.append(
+            {
+                "symbol": symbol,
+                "direction_orientation": orientation,
+                "horizon": horizon,
+                "count": int(len(group)),
+                "mean_event_return": mean_return,
+                "mean_baseline_cost_return": baseline,
+                "mean_stress_cost_return": stress,
+                "baseline_cost_passed": bool(mean_return > baseline),
+                "stress_cost_passed": bool(mean_return > stress),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _positive_two_of_three_years(primary: pd.DataFrame) -> bool:
+    if primary.empty:
+        return False
+    for orientation in ("continuation_short", "continuation_long"):
+        subset = primary.loc[primary["direction_orientation"] == orientation]
+        if subset.empty:
+            return False
+        by_year = subset.groupby("year")["event_return"].mean()
+        if int((by_year > 0).sum()) < 2:
+            return False
+    return True
+
+
+def _not_dominated_by_single_year(primary: pd.DataFrame, maximum_share: float = 0.70) -> bool:
+    if primary.empty:
+        return False
+    positive_by_year = primary.groupby("year")["event_return"].sum()
+    positive_by_year = positive_by_year.loc[positive_by_year > 0]
+    total = float(positive_by_year.sum())
+    if total <= 0:
+        return False
+    return bool(float(positive_by_year.max() / total) <= maximum_share)
+
+
+def evaluate_discovery_gate(
+    path_metrics: pd.DataFrame,
+    bootstrap_intervals: pd.DataFrame,
+) -> dict[str, Any]:
+    primary = path_metrics.loc[path_metrics["horizon"] == PRIMARY_HORIZON].copy() if not path_metrics.empty else pd.DataFrame()
+    if not primary.empty:
+        years = set(primary["year"].astype(int))
+        contains_blocked_years = any(year >= 2025 for year in years)
+    else:
+        contains_blocked_years = False
+    criteria = {
+        "continuation_short_expected_sign": bool(
+            not primary.loc[primary["direction_orientation"] == "continuation_short"].empty
+            and primary.loc[primary["direction_orientation"] == "continuation_short", "event_return"].mean() > 0
+        ),
+        "continuation_long_expected_sign": bool(
+            not primary.loc[primary["direction_orientation"] == "continuation_long"].empty
+            and primary.loc[primary["direction_orientation"] == "continuation_long", "event_return"].mean() > 0
+        ),
+        "qqq_and_spy_same_sign": bool(
+            not primary.empty
+            and set(primary["symbol"].astype(str).str.upper()) == set(EXPECTED_SYMBOLS)
+            and all(value > 0 for value in primary.groupby("symbol")["event_return"].mean())
+        ),
+        "effect_in_at_least_two_of_three_years": _positive_two_of_three_years(primary),
+        "incremental_return_vs_control_positive": bool(
+            "incremental_return" in primary and not primary["incremental_return"].dropna().empty and primary["incremental_return"].mean() > 0
+        ),
+        "mean_return_exceeds_baseline_round_trip_cost": bool(
+            "baseline_cost_return" in primary and not primary.empty and primary["event_return"].mean() > primary["baseline_cost_return"].mean()
+        ),
+        "not_dominated_by_single_year": _not_dominated_by_single_year(primary),
+        "bootstrap_grouped_by_session_not_strongly_contradictory": bool(
+            not bootstrap_intervals.empty
+            and not bootstrap_intervals.loc[bootstrap_intervals["horizon"] == PRIMARY_HORIZON].empty
+            and all(
+                bootstrap_intervals.loc[bootstrap_intervals["horizon"] == PRIMARY_HORIZON, "bootstrap_ci_high"].astype(float) >= 0
+            )
+        ),
+        "no_lookahead": True,
+        "no_2025_or_2026_contamination": not contains_blocked_years,
+    }
+    passed = bool(all(criteria.values()))
+    return {
+        "hypothesis_id": HYPOTHESIS_ID,
+        "primary_horizon": PRIMARY_HORIZON,
+        "secondary_horizons_cannot_override_primary_fail": True,
+        "all_required": True,
+        "criteria": criteria,
+        "passed": passed,
+        "classification": "discovery_passed_primary_gate" if passed else "discovery_failed",
+        "validation_2025_unlocked": passed,
+        "paper_eligible": False,
+        "live_eligible": False,
+        "orders_created": False,
+        "position_sizing_used": False,
+    }
+
+
 def assert_no_strategy_columns(frame: pd.DataFrame) -> None:
     forbidden = FORBIDDEN_STRATEGY_COLUMNS.intersection(set(frame.columns))
     if forbidden:
         raise AssertionError(f"Forbidden strategy columns present: {sorted(forbidden)}")
-

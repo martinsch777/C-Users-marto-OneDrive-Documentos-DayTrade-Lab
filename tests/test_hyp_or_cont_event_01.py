@@ -1,18 +1,36 @@
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 import yaml
 
+from src.research.hyp_or_cont_event_01_discovery import (
+    EXPECTED_CANONICAL_HASH,
+    EXPECTED_FREEZE_COMMIT,
+    REQUIRED_OUTPUT_FILES,
+    ExecutionProgress,
+    OrContDiscoveryRequest,
+    RuntimeState,
+    prepare_only_manifest,
+    run_operational_discovery,
+    validate_discovery_preflight,
+)
 from src.research.hyp_or_cont_event_01 import (
     HORIZONS,
     PRIMARY_HORIZON,
     OrContEventConfig,
     assert_no_strategy_columns,
+    attach_cost_thresholds,
+    attach_incremental_returns,
+    compute_unconditional_control,
     compute_or_continuation_paths,
     detect_or_continuation_events,
+    evaluate_discovery_gate,
     frozen_cost_profiles,
     round_trip_cost_return,
     validate_or_cont_period,
@@ -80,6 +98,43 @@ def high_sweep_day(extra: list[dict] | None = None, date: str = "2024-07-01") ->
     )
     rows.extend(extra or [])
     return frame(rows)
+
+
+def write_manifest(path: Path, symbol: str, *, status: str = "approved_for_or_fvg_backtest") -> None:
+    payload = {
+        "symbol": symbol,
+        "asset_class": "equity",
+        "timeframe": "1min",
+        "provider": "alpaca",
+        "feed": "sip",
+        "adjustment": "raw",
+        "source_timezone": "America/New_York",
+        "rth_only": True,
+        "start": "2022-01-01",
+        "end": "2026-07-06",
+        "rows": 1,
+        "first_timestamp": "2022-01-03T14:30:00Z",
+        "last_timestamp": "2026-07-06T19:59:00Z",
+        "input_file": f"data/curated/{symbol}_synthetic.csv",
+        "output_file": f"data/curated/{symbol}_synthetic.csv",
+        "curated_file": f"data/curated/{symbol}_synthetic.csv",
+        "sha256": symbol.lower() * 16,
+        "calendar_source": "builtin_us_equity_calendar_v1",
+        "calendar_loaded": True,
+        "calendar_holidays_loaded": 1,
+        "calendar_early_closes_loaded": 1,
+        "audit_apt_for_or_fvg_backtest": status == "approved_for_or_fvg_backtest",
+        "audit_critical_warnings": [] if status == "approved_for_or_fvg_backtest" else ["failed"],
+        "audit_warnings": [],
+        "dataset_status": status,
+        "total_excluded_sessions": 0,
+        "excluded_sessions": [],
+        "broker_connected": False,
+        "orders_sent": False,
+        "live_trading_enabled": False,
+        "paper_broker_enabled": False,
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 class HypOrContEvent01Tests(unittest.TestCase):
@@ -214,6 +269,249 @@ class HypOrContEvent01Tests(unittest.TestCase):
         self.assertEqual(config.confirmation_bar_count, 3)
         payload = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
         self.assertFalse(any(payload["safety_flags"].values()))
+
+    def make_request(self, root: Path, **overrides) -> OrContDiscoveryRequest:
+        qqq_manifest = root / "QQQ_manifest.json"
+        spy_manifest = root / "SPY_manifest.json"
+        write_manifest(qqq_manifest, "QQQ")
+        write_manifest(spy_manifest, "SPY")
+        values = {
+            "mode": "run_discovery",
+            "manifest_paths": {"QQQ": qqq_manifest, "SPY": spy_manifest},
+            "dataset_paths": {"QQQ": root / "QQQ.csv", "SPY": root / "SPY.csv"},
+        }
+        values.update(overrides)
+        return OrContDiscoveryRequest(**values)
+
+    def operational_day(self, *, symbol: str) -> pd.DataFrame:
+        base = low_sweep_day() if symbol == "QQQ" else high_sweep_day()
+        rows = base.to_dict("records")
+        rows.extend(
+            [
+                bar("2024-07-01 10:25", 100.0, 100.2, 99.0, 99.6),
+                bar("2024-07-01 10:30", 99.6, 100.0, 98.8, 99.2),
+                bar("2024-07-01 10:35", 99.2, 100.1, 98.5, 99.0),
+                bar("2024-07-01 10:40", 99.0, 100.2, 98.2, 98.8),
+                bar("2024-07-01 10:45", 98.8, 100.3, 98.0, 98.6),
+                bar("2024-07-01 10:50", 98.6, 100.4, 97.8, 98.4),
+                bar("2024-07-01 11:20", 98.4, 100.5, 97.6, 98.2),
+            ]
+        )
+        if symbol == "SPY":
+            for row in rows:
+                row["open"], row["high"], row["low"], row["close"] = (
+                    200.0,
+                    201.4 if row["timestamp"] == ts("2024-07-01 10:00") else 200.8,
+                    199.5,
+                    201.0,
+                )
+        return frame(rows)
+
+    def fake_loader(self, symbol: str, csv_path: Path, manifest_path: Path):
+        data = self.operational_day(symbol=symbol)
+        blocked = frame([bar("2025-01-02 10:00", 1, 1, 1, 1), bar("2026-01-02 10:00", 1, 1, 1, 1)])
+        return pd.concat([data, blocked], ignore_index=True), {"symbol": symbol, "sha256": f"{symbol}-sha"}
+
+    def test_prepare_only_runner_does_not_execute(self):
+        payload = prepare_only_manifest()
+        self.assertFalse(payload["event_study_executed"])
+        self.assertFalse(payload["results_written"])
+
+    def test_preflight_validates_freeze_commit_and_hash(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = self.make_request(root)
+            runtime = RuntimeState("f" * 40, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            payload = validate_discovery_preflight(request, runtime_state=runtime)
+            self.assertEqual(payload["freeze_commit"], EXPECTED_FREEZE_COMMIT)
+            self.assertEqual(payload["canonical_payload_hash"], EXPECTED_CANONICAL_HASH)
+
+    def test_preflight_rejects_wrong_freeze_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = self.make_request(root)
+            runtime = RuntimeState("f" * 40, "0" * 40, EXPECTED_FREEZE_COMMIT)
+            with self.assertRaises(PermissionError):
+                validate_discovery_preflight(request, runtime_state=runtime)
+
+    def test_preflight_requires_approved_curated_manifests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = self.make_request(root)
+            write_manifest(request.manifest_paths["QQQ"], "QQQ", status="failed_audit")
+            runtime = RuntimeState("f" * 40, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            with self.assertRaises(PermissionError):
+                validate_discovery_preflight(request, runtime_state=runtime)
+
+    def test_unconditional_control_is_matched_by_symbol_year_hour_horizon(self):
+        data = low_sweep_day(
+            [
+                bar("2024-07-01 10:25", 100.0, 100.5, 99.0, 99.0),
+                bar("2024-07-01 10:50", 99.0, 99.5, 98.5, 98.0),
+            ]
+        )
+        events, _ = detect_or_continuation_events(data, "QQQ")
+        paths = compute_or_continuation_paths(data, events, horizons=("30min",))
+        control = compute_unconditional_control({"QQQ": data}, paths)
+        self.assertEqual(control.iloc[0]["symbol"], "QQQ")
+        self.assertEqual(control.iloc[0]["year"], 2024)
+        self.assertEqual(control.iloc[0]["executable_timestamp_hour_bucket"], "10:00")
+        self.assertEqual(control.iloc[0]["horizon"], "30min")
+        self.assertGreaterEqual(control.iloc[0]["unconditional_sample_count"], 1)
+
+    def test_incremental_return_is_event_minus_control(self):
+        paths = pd.DataFrame(
+            [
+                {
+                    "symbol": "QQQ",
+                    "session_date": "2024-07-01",
+                    "executable_timestamp": ts("2024-07-01 10:20"),
+                    "direction_orientation": "continuation_short",
+                    "horizon": "30min",
+                    "event_return": 0.01,
+                }
+            ]
+        )
+        control = paths.copy()
+        control["unconditional_return"] = 0.004
+        control["unconditional_sample_count"] = 12
+        merged = attach_incremental_returns(paths, control)
+        self.assertAlmostEqual(merged.iloc[0]["incremental_return"], 0.006)
+
+    def test_gate_passes_only_when_all_primary_criteria_pass(self):
+        rows = []
+        for symbol in ("QQQ", "SPY"):
+            for orientation in ("continuation_short", "continuation_long"):
+                for year in (2022, 2023, 2024):
+                    rows.append(
+                        {
+                            "symbol": symbol,
+                            "session_date": f"{year}-07-01",
+                            "year": year,
+                            "direction_orientation": orientation,
+                            "horizon": "30min",
+                            "event_return": 0.01,
+                            "incremental_return": 0.005,
+                            "baseline_cost_return": 0.0004,
+                        }
+                    )
+        primary = pd.DataFrame(rows)
+        bootstrap = pd.DataFrame(
+            [
+                {
+                    "symbol": symbol,
+                    "direction_orientation": orientation,
+                    "horizon": "30min",
+                    "bootstrap_ci_high": 0.02,
+                }
+                for symbol in ("QQQ", "SPY")
+                for orientation in ("continuation_short", "continuation_long")
+            ]
+        )
+        gate = evaluate_discovery_gate(primary, bootstrap)
+        self.assertTrue(gate["passed"])
+        self.assertEqual(gate["primary_horizon"], "30min")
+
+    def test_secondary_horizons_cannot_rescue_primary_fail(self):
+        paths = pd.DataFrame(
+            [
+                {
+                    "symbol": "QQQ",
+                    "session_date": "2024-07-01",
+                    "year": 2024,
+                    "direction_orientation": "continuation_short",
+                    "horizon": "30min",
+                    "event_return": -0.01,
+                    "incremental_return": -0.01,
+                    "baseline_cost_return": 0.0004,
+                },
+                {
+                    "symbol": "QQQ",
+                    "session_date": "2024-07-01",
+                    "year": 2024,
+                    "direction_orientation": "continuation_short",
+                    "horizon": "60min",
+                    "event_return": 0.10,
+                    "incremental_return": 0.10,
+                    "baseline_cost_return": 0.0004,
+                },
+            ]
+        )
+        bootstrap = pd.DataFrame([{"horizon": "30min", "bootstrap_ci_high": 0.02}])
+        gate = evaluate_discovery_gate(paths, bootstrap)
+        self.assertFalse(gate["passed"])
+        self.assertTrue(gate["secondary_horizons_cannot_override_primary_fail"])
+
+    def test_run_discovery_writes_exact_outputs_atomically_with_synthetic_loader(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "out"
+            request = self.make_request(root)
+            runtime = RuntimeState("f" * 40, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            payload = run_operational_discovery(
+                request,
+                output_dir=output,
+                runtime_state=runtime,
+                dataset_loader=self.fake_loader,
+                five_minute_preparer=lambda frame: frame,
+                n_bootstrap=10,
+                progress=ExecutionProgress(emit_console=False),
+            )
+            self.assertTrue(payload["results_written"])
+            self.assertEqual({path.name for path in output.iterdir()}, set(REQUIRED_OUTPUT_FILES))
+            self.assertTrue((output / "confirmed_events.csv").exists())
+            self.assertTrue((output / "unconditional_control.csv").exists())
+
+    def test_atomic_write_leaves_no_final_directory_on_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "out"
+            request = self.make_request(root)
+            runtime = RuntimeState("f" * 40, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            with patch("src.research.hyp_or_cont_event_01_discovery._verify_required_outputs", side_effect=FileNotFoundError("missing")):
+                payload = run_operational_discovery(
+                    request,
+                    output_dir=output,
+                    runtime_state=runtime,
+                    dataset_loader=self.fake_loader,
+                    five_minute_preparer=lambda frame: frame,
+                    n_bootstrap=10,
+                    progress=ExecutionProgress(emit_console=False),
+                    raise_on_error=False,
+                )
+            self.assertFalse(payload["results_written"])
+            self.assertFalse(output.exists())
+
+    def test_runner_outputs_do_not_contain_strategy_columns(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "out"
+            request = self.make_request(root)
+            runtime = RuntimeState("f" * 40, EXPECTED_FREEZE_COMMIT, EXPECTED_FREEZE_COMMIT)
+            run_operational_discovery(
+                request,
+                output_dir=output,
+                runtime_state=runtime,
+                dataset_loader=self.fake_loader,
+                five_minute_preparer=lambda frame: frame,
+                n_bootstrap=10,
+                progress=ExecutionProgress(emit_console=False),
+            )
+            text = "\n".join(path.read_text(encoding="utf-8").lower() for path in output.glob("*.csv"))
+            self.assertNotIn("entry_price", text)
+            self.assertNotIn("stop", text)
+            self.assertNotIn("target", text)
+            self.assertNotIn("quantity", text)
+
+    def test_cost_thresholds_are_price_dependent(self):
+        paths = pd.DataFrame(
+            [
+                {"executable_price_reference": 100.0, "event_return": 0.01},
+                {"executable_price_reference": 200.0, "event_return": 0.01},
+            ]
+        )
+        enriched = attach_cost_thresholds(paths)
+        self.assertGreater(enriched.iloc[0]["baseline_cost_return"], enriched.iloc[1]["baseline_cost_return"])
 
 
 if __name__ == "__main__":
