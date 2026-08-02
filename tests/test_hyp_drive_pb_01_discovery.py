@@ -996,6 +996,284 @@ class AggregationBootstrapProgressTests(unittest.TestCase):
         )
 
 
+class AtomicReplaceRetryTests(unittest.TestCase):
+    @staticmethod
+    def access_denied() -> PermissionError:
+        error = PermissionError("Access is denied")
+        error.winerror = 5
+        return error
+
+    @staticmethod
+    def generic_winerror_5() -> OSError:
+        error = OSError("Access is denied")
+        error.winerror = 5
+        return error
+
+    def test_os_replace_succeeds_on_first_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / ".payload.tmp"
+            destination = root / "payload.json"
+            source.write_text("new", encoding="utf-8")
+            destination.write_text("old", encoding="utf-8")
+            real_replace = discovery.os.replace
+            with (
+                patch.object(discovery.os, "replace", wraps=real_replace) as replace_mock,
+                patch.object(discovery.time, "sleep") as sleep_mock,
+            ):
+                discovery._atomic_replace_with_retry(source, destination)
+            replace_mock.assert_called_once_with(source, destination)
+            sleep_mock.assert_not_called()
+            self.assertEqual(destination.read_text(encoding="utf-8"), "new")
+
+    def test_two_permission_errors_then_success(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / ".payload.tmp"
+            destination = root / "payload.json"
+            source.write_text("new", encoding="utf-8")
+            real_replace = discovery.os.replace
+            calls = 0
+
+            def flaky_replace(src, dst):
+                nonlocal calls
+                calls += 1
+                if calls <= 2:
+                    raise self.access_denied()
+                return real_replace(src, dst)
+
+            with (
+                patch.object(
+                    discovery.os, "replace", side_effect=flaky_replace
+                ) as replace_mock,
+                patch.object(discovery.time, "sleep") as sleep_mock,
+            ):
+                discovery._atomic_replace_with_retry(source, destination)
+            self.assertEqual(replace_mock.call_count, 3)
+            self.assertEqual(
+                [item.args[0] for item in sleep_mock.call_args_list],
+                list(discovery._ATOMIC_REPLACE_RETRY_DELAYS_SECONDS[:2]),
+            )
+            self.assertEqual(destination.read_text(encoding="utf-8"), "new")
+
+    def test_generic_oserror_with_winerror_5_is_retried(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / ".payload.tmp"
+            destination = root / "payload.json"
+            source.write_text("new", encoding="utf-8")
+            real_replace = discovery.os.replace
+            calls = 0
+
+            def flaky_replace(src, dst):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    raise self.generic_winerror_5()
+                return real_replace(src, dst)
+
+            with (
+                patch.object(
+                    discovery.os, "replace", side_effect=flaky_replace
+                ) as replace_mock,
+                patch.object(discovery.time, "sleep") as sleep_mock,
+            ):
+                discovery._atomic_replace_with_retry(source, destination)
+            self.assertEqual(replace_mock.call_count, 2)
+            sleep_mock.assert_called_once_with(
+                discovery._ATOMIC_REPLACE_RETRY_DELAYS_SECONDS[0]
+            )
+
+    def test_all_attempts_fail_and_original_error_is_propagated(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / ".payload.tmp"
+            destination = root / "payload.json"
+            source.write_text("new", encoding="utf-8")
+            error = self.access_denied()
+            with (
+                patch.object(discovery.os, "replace", side_effect=error) as replace_mock,
+                patch.object(discovery.time, "sleep") as sleep_mock,
+            ):
+                with self.assertRaises(PermissionError) as raised:
+                    discovery._atomic_replace_with_retry(source, destination)
+            self.assertIs(raised.exception, error)
+            self.assertEqual(
+                replace_mock.call_count,
+                len(discovery._ATOMIC_REPLACE_RETRY_DELAYS_SECONDS) + 1,
+            )
+            self.assertEqual(
+                sleep_mock.call_count,
+                len(discovery._ATOMIC_REPLACE_RETRY_DELAYS_SECONDS),
+            )
+            self.assertTrue(source.is_file())
+            self.assertFalse(destination.exists())
+
+    def test_unrelated_error_is_not_retried(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / ".payload.tmp"
+            destination = root / "payload.json"
+            source.write_text("new", encoding="utf-8")
+            error = OSError("unrelated")
+            with (
+                patch.object(discovery.os, "replace", side_effect=error) as replace_mock,
+                patch.object(discovery.time, "sleep") as sleep_mock,
+            ):
+                with self.assertRaises(OSError) as raised:
+                    discovery._atomic_replace_with_retry(source, destination)
+            self.assertIs(raised.exception, error)
+            replace_mock.assert_called_once_with(source, destination)
+            sleep_mock.assert_not_called()
+            self.assertTrue(source.is_file())
+
+    def test_temporary_remains_available_during_retries(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / ".payload.tmp"
+            destination = root / "payload.json"
+            source.write_text("new", encoding="utf-8")
+            real_replace = discovery.os.replace
+            source_states: list[bool] = []
+
+            def flaky_replace(src, dst):
+                source_states.append(Path(src).is_file())
+                if len(source_states) <= 2:
+                    raise self.access_denied()
+                return real_replace(src, dst)
+
+            with (
+                patch.object(discovery.os, "replace", side_effect=flaky_replace),
+                patch.object(discovery.time, "sleep"),
+            ):
+                discovery._atomic_replace_with_retry(source, destination)
+            self.assertEqual(source_states, [True, True, True])
+
+    def test_temporary_disappears_after_success(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / ".payload.tmp"
+            destination = root / "payload.json"
+            source.write_text("new", encoding="utf-8")
+            real_replace = discovery.os.replace
+            with patch.object(discovery.os, "replace", wraps=real_replace):
+                discovery._atomic_replace_with_retry(source, destination)
+            self.assertFalse(source.exists())
+            self.assertTrue(destination.is_file())
+
+    def run_progress_update_with_transient_locks(self, root: Path):
+        progress_path = root / "execution_progress.json"
+        progress = discovery.ExecutionProgress(
+            progress_path=progress_path,
+            emit_console=False,
+        )
+        stage = progress.start(
+            "aggregations_and_bootstrap",
+            groups_total=4,
+            groups_processed=0,
+            bootstrap_replicates_total=10_000,
+            bootstrap_replicates_processed=0,
+        )
+        real_replace = discovery.os.replace
+        observations: list[dict] = []
+        calls = 0
+
+        def flaky_replace(src, dst):
+            nonlocal calls
+            calls += 1
+            if calls <= 2:
+                observations.append(
+                    {
+                        "temporary_exists": Path(src).is_file(),
+                        "destination": json.loads(
+                            Path(dst).read_text(encoding="utf-8")
+                        ),
+                        "temporary": json.loads(
+                            Path(src).read_text(encoding="utf-8")
+                        ),
+                    }
+                )
+                raise self.access_denied()
+            return real_replace(src, dst)
+
+        with (
+            patch.object(discovery.os, "replace", side_effect=flaky_replace),
+            patch.object(discovery.time, "sleep"),
+        ):
+            progress.update(
+                stage,
+                groups_processed=2,
+                bootstrap_replicates_processed=2_048,
+                eta_seconds=1.0,
+            )
+        payload = json.loads(progress_path.read_text(encoding="utf-8"))
+        return progress, stage, observations, payload
+
+    def test_execution_progress_continues_after_transient_locks(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            _, stage, observations, payload = (
+                self.run_progress_update_with_transient_locks(Path(temporary))
+            )
+        self.assertEqual(len(observations), 2)
+        self.assertEqual(stage["bootstrap_replicates_processed"], 2_048)
+        self.assertEqual(
+            payload["stages"][0]["bootstrap_replicates_processed"], 2_048
+        )
+
+    def test_progress_stage_is_not_duplicated_by_retries(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            progress, _, _, payload = self.run_progress_update_with_transient_locks(
+                Path(temporary)
+            )
+        self.assertEqual(len(progress.stages), 1)
+        self.assertEqual(len(payload["stages"]), 1)
+        self.assertEqual(payload["stages"][0]["stage"], "aggregations_and_bootstrap")
+
+    def test_results_written_does_not_change_during_progress_retries(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            _, stage, observations, payload = (
+                self.run_progress_update_with_transient_locks(Path(temporary))
+            )
+        self.assertFalse(stage["results_written"])
+        self.assertFalse(payload["stages"][0]["results_written"])
+        for observation in observations:
+            self.assertFalse(
+                observation["destination"]["stages"][0]["results_written"]
+            )
+            self.assertFalse(
+                observation["temporary"]["stages"][0]["results_written"]
+            )
+
+    def test_destination_remains_atomic_until_replace_succeeds(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / ".payload.tmp"
+            destination = root / "payload.json"
+            source.write_text("new", encoding="utf-8")
+            destination.write_text("old", encoding="utf-8")
+            real_replace = discovery.os.replace
+            observed_destinations: list[str] = []
+            calls = 0
+
+            def flaky_replace(src, dst):
+                nonlocal calls
+                calls += 1
+                if calls <= 2:
+                    observed_destinations.append(
+                        Path(dst).read_text(encoding="utf-8")
+                    )
+                    raise self.access_denied()
+                return real_replace(src, dst)
+
+            with (
+                patch.object(discovery.os, "replace", side_effect=flaky_replace),
+                patch.object(discovery.time, "sleep"),
+            ):
+                discovery._atomic_replace_with_retry(source, destination)
+            self.assertEqual(observed_destinations, ["old", "old"])
+            self.assertEqual(destination.read_text(encoding="utf-8"), "new")
+
+
 class ChecksumAtomicTests(unittest.TestCase):
     def prepare_directory(self, root: Path):
         for name in discovery.REQUIRED_OUTPUT_FILES:

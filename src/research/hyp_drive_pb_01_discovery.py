@@ -4,6 +4,7 @@ import argparse
 import csv
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import time
@@ -97,6 +98,7 @@ REQUIRED_OUTPUT_FILES = (
     "execution_progress.json",
     "checksums.json",
 )
+_ATOMIC_REPLACE_RETRY_DELAYS_SECONDS = (0.05, 0.10, 0.20, 0.40, 0.80)
 
 
 @dataclass(frozen=True)
@@ -391,6 +393,22 @@ def _validate_progress_values(values: Mapping[str, Any]) -> None:
         raise ValueError("eta_seconds cannot be negative.")
 
 
+def _atomic_replace_with_retry(source: Path, destination: Path) -> None:
+    for attempt in range(len(_ATOMIC_REPLACE_RETRY_DELAYS_SECONDS) + 1):
+        try:
+            os.replace(source, destination)
+            return
+        except OSError as error:
+            retryable = isinstance(error, PermissionError) or (
+                getattr(error, "winerror", None) == 5
+            )
+            if not retryable or attempt == len(
+                _ATOMIC_REPLACE_RETRY_DELAYS_SECONDS
+            ):
+                raise
+            time.sleep(_ATOMIC_REPLACE_RETRY_DELAYS_SECONDS[attempt])
+
+
 def _write_json_atomic(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp-{uuid4().hex}")
@@ -406,7 +424,7 @@ def _write_json_atomic(path: Path, payload: Any) -> None:
         + "\n",
         encoding="utf-8",
     )
-    temporary.replace(path)
+    _atomic_replace_with_retry(temporary, path)
 
 
 def _json_safe(value: Any) -> Any:
