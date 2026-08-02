@@ -1,0 +1,89 @@
+{
+  "approved_sessions": {
+    "QQQ": 753,
+    "SPY": 752
+  },
+  "canonical_payload_hash": "b763e7d2d01f1d12f9be85fa0238a4ccb21b251baee966f8e421410aaecc651b",
+  "causal_integrity_report": {
+    "accepted_incomplete_sessions": 0,
+    "calendar_session_validation_passed": true,
+    "causal_integrity_passed": true,
+    "control_integrity_passed": true,
+    "dataset_contract_passed": true,
+    "event_timestamp_integrity_passed": true,
+    "horizon_continuity_passed": true,
+    "lookahead_violations": 0,
+    "manifest_validation_passed": true,
+    "resample_causality_passed": true,
+    "unresolved_data_quality_failures": 0
+  },
+  "checksums_verified": true,
+  "conceptual_design_freeze_commit": "925cede00f3d9c1b4de46e225f98d4636c19a831",
+  "curated_files": {
+    "QQQ": "data/curated/QQQ_1min_2022-01-01_2026-07-06_curated.csv",
+    "SPY": "data/curated/SPY_1min_2022-01-01_2026-07-06_curated.csv"
+  },
+  "discovery_executed": true,
+  "event_study_executed": true,
+  "excluded_sessions": {
+    "QQQ": [],
+    "SPY": [
+      "2023-06-05"
+    ]
+  },
+  "execution_freeze_commit": "3341d439cab38222c023c6657edb0300e503b1f8",
+  "head_commit": "3341d439cab38222c023c6657edb0300e503b1f8",
+  "historical_2026_executed": false,
+  "horizons": [
+    "15min",
+    "30min",
+    "60min",
+    "session_close"
+  ],
+  "hypothesis_id": "HYP-DRIVE-PB-01",
+  "implementation_clarification_freeze_commit": "764478b86a01619620166848204e527f2fb55c55",
+  "manifests": {
+    "QQQ": "data/manifests/QQQ_1min_2022-01-01_2026-07-06_curated_manifest.json",
+    "SPY": "data/manifests/SPY_1min_2022-01-01_2026-07-06_curated_manifest.json"
+  },
+  "mode": "run_discovery",
+  "orders_created": false,
+  "period": "discovery_2022_2024",
+  "position_sizing_used": false,
+  "preregistration_freeze_commit": "adb7f7b59b08389883777103e23f98ea298a5965",
+  "primary_horizon": "30min",
+  "requested_end": "2024-12-31",
+  "requested_start": "2022-01-01",
+  "results_written": true,
+  "runtime_config_hash": "b763e7d2d01f1d12f9be85fa0238a4ccb21b251baee966f8e421410aaecc651b",
+  "safety_flags": {
+    "broker_connected": false,
+    "live_eligible": false,
+    "live_trading": false,
+    "orders_created": false,
+    "orders_sent": false,
+    "paper_broker_enabled": false,
+    "paper_eligible": false,
+    "position_sizing_used": false,
+    "strategy_created": false
+  },
+  "strategy_created": false,
+  "symbols": [
+    "QQQ",
+    "SPY"
+  ],
+  "temporal_access_report": {
+    "contamination_absent": true,
+    "control_rows_outside_discovery": 0,
+    "event_rows_outside_discovery": 0,
+    "historical_2025_rows_materialized": 0,
+    "historical_2026_rows_materialized": 0,
+    "horizons_crossing_session_or_period": 0,
+    "materialized_max_timestamp": "2024-12-31T20:59:00+00:00",
+    "materialized_min_timestamp": "2022-01-03T14:30:00+00:00",
+    "materialized_rows_after_discovery_end": 0,
+    "requested_end": "2024-12-31",
+    "requested_start": "2022-01-01"
+  },
+  "validation_2025_executed": false
+}

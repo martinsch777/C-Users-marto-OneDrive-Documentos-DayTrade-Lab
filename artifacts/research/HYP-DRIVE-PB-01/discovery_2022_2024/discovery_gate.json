@@ -1,0 +1,127 @@
+{
+  "all_required": true,
+  "classification": "discovery_failed",
+  "criteria": {
+    "all_three_bootstrap_lower_bounds_strictly_positive": false,
+    "annual_concentration_at_most_0_70": false,
+    "annual_signs_positive_in_at_least_two_of_three_years_original_and_leave_one_out": false,
+    "continuation_long_positive_mean_and_median": false,
+    "continuation_short_positive_mean_and_median": true,
+    "gross_mean_positive_in_at_least_two_of_three_years": false,
+    "leave_one_session_out_concentration_at_most_0_70": false,
+    "minimum_events_per_symbol": false,
+    "minimum_pooled_events": false,
+    "no_2025_or_2026_contamination": true,
+    "no_lookahead_or_unresolved_data_quality_failure": true,
+    "one_variant_budget_respected": true,
+    "pooled_baseline_net_mean_positive": false,
+    "pooled_incremental_mean_positive": true,
+    "pooled_stress_net_mean_non_negative": false,
+    "qqq_and_spy_positive_primary_means": false
+  },
+  "gate_inputs": {
+    "annual_concentration": {
+      "passed": false,
+      "scope": "annual_concentration",
+      "threshold": 0.7,
+      "validation_status": "MISSING_REQUIRED_YEAR",
+      "value": null
+    },
+    "annual_gross_mean": {
+      "2022": -0.0016138107423327441,
+      "2023": 0.0038338030015072633
+    },
+    "annual_incremental_signs": {
+      "2022": -0.002730040052275038,
+      "2023": 0.0038538952904837516
+    },
+    "bootstrap_intervals": {
+      "event_return": [
+        -0.003971537315902718,
+        0.0038338030015072633
+      ],
+      "incremental_return": [
+        -0.0037321775060017728,
+        0.0038538952904837516
+      ],
+      "net_return_baseline": [
+        -0.004226697556401367,
+        0.003568518196545618
+      ]
+    },
+    "causal_integrity_report": {
+      "accepted_incomplete_sessions": 0,
+      "calendar_session_validation_passed": true,
+      "causal_integrity_passed": true,
+      "control_integrity_passed": true,
+      "dataset_contract_passed": true,
+      "event_timestamp_integrity_passed": true,
+      "horizon_continuity_passed": true,
+      "lookahead_violations": 0,
+      "manifest_validation_passed": true,
+      "resample_causality_passed": true,
+      "unresolved_data_quality_failures": 0
+    },
+    "decision_variants": 1,
+    "direction_mean": {
+      "continuation_long": -0.0016138107423327441,
+      "continuation_short": 0.0038338030015072633
+    },
+    "direction_median": {
+      "continuation_long": -0.0016138107423327441,
+      "continuation_short": 0.0038338030015072633
+    },
+    "event_count_by_symbol": {
+      "QQQ": 3,
+      "SPY": 0
+    },
+    "leave_one_out_annual_incremental_signs": {
+      "2022": -0.002730040052275038
+    },
+    "leave_one_session_out_concentration": {
+      "passed": false,
+      "removed_session_date": "2023-03-28",
+      "scope": "leave_one_largest_session_out",
+      "threshold": 0.7,
+      "validation_status": "MISSING_REQUIRED_YEAR",
+      "value": null
+    },
+    "pooled_baseline_net_mean": -6.170421846767706e-05,
+    "pooled_event_count": 3,
+    "pooled_incremental_mean": 0.0003746184127362379,
+    "pooled_stress_net_mean": -0.0003254689425492791,
+    "primary_horizon_minutes": 30,
+    "symbol_mean": {
+      "QQQ": 0.000202060505613925
+    },
+    "temporal_access_report": {
+      "contamination_absent": true,
+      "control_rows_outside_discovery": 0,
+      "event_rows_outside_discovery": 0,
+      "historical_2025_rows_materialized": 0,
+      "historical_2026_rows_materialized": 0,
+      "horizons_crossing_session_or_period": 0,
+      "materialized_max_timestamp": "2024-12-31T20:59:00+00:00",
+      "materialized_min_timestamp": "2022-01-03T14:30:00+00:00",
+      "materialized_rows_after_discovery_end": 0,
+      "requested_end": "2024-12-31",
+      "requested_start": "2022-01-01"
+    }
+  },
+  "live_eligible": false,
+  "orders_created": false,
+  "paper_eligible": false,
+  "passed": false,
+  "position_sizing_used": false,
+  "primary_horizon": "30min",
+  "secondary_horizons_cannot_override_primary_fail": true,
+  "strategy_created": false,
+  "thresholds": {
+    "bootstrap_lower_bound": 0.0,
+    "maximum_annual_effect_concentration": 0.7,
+    "minimum_events_per_symbol": 50,
+    "minimum_pooled_events": 150,
+    "minimum_positive_discovery_years": 2
+  },
+  "validation_2025_unlocked": false
+}

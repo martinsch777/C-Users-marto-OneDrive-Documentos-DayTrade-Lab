@@ -1,0 +1,275 @@
+schema_version: 1
+hypothesis_id: HYP-DRIVE-PB-01
+name: "Opening Drive + Controlled Pullback Continuation"
+type: causal_event_study
+status: preregistered_not_executed
+conceptual_design_freeze_commit: 925cede00f3d9c1b4de46e225f98d4636c19a831
+implementation_clarification_freeze_commit: 764478b86a01619620166848204e527f2fb55c55
+approval:
+  status: approved
+  approved_by: project_owner
+  approval_date: "2026-07-28"
+  approved_decisions: [B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, B13, B14, B15]
+  parameters_frozen: 17
+  decision_variants: 1
+research_parameters:
+  count: 17
+  values:
+    drive_start: "09:30"
+    drive_end: "09:45"
+    historical_atr_lookback: 20
+    minimum_normalized_drive: 0.25
+    minimum_initial_adverse_pullback_ticks: 1
+    maximum_normalized_pullback_depth: 0.50
+    maximum_post_drive_observation_bars: 5
+    latest_confirmation_executable_boundary: ["10:10", "10:15"]
+    maximum_events_per_symbol_session: 1
+    primary_horizon_minutes: 30
+    minimum_pooled_events: 150
+    minimum_events_per_symbol: 50
+    minimum_positive_discovery_years: 2
+    maximum_annual_effect_concentration: 0.70
+    bootstrap_confidence_level: 0.95
+    bootstrap_resamples: 10000
+    bootstrap_seed: 20260728
+frozen_market_conventions:
+  count: 1
+  classification: frozen_market_convention
+  tick_size_by_symbol:
+    QQQ: 0.01
+    SPY: 0.01
+configuration_governance:
+  single_source_of_truth: yaml_v1
+  config_requires_explicit_values: true
+  no_decisional_defaults: true
+universe:
+  symbols: [QQQ, SPY]
+  asset_class: US_equity_ETF
+data:
+  future_source: approved_curated_1min_Alpaca_SIP
+  manifests_required_for_future_execution: true
+  manifests_read_during_materialization: false
+  real_ohlc_read_during_materialization: false
+timeframe: 5min
+session:
+  calendar: US_EQUITY_RTH
+  timezone: America/New_York
+  regular_hours: "09:30-16:00"
+  premarket: false
+  after_hours: false
+  overnight: false
+temporal_splits:
+  discovery: {start: "2022-01-01", end: "2024-12-31", executed: false}
+  validation_2025: {start: "2025-01-01", end: "2025-12-31", unlocked: false, executed: false}
+  historical_2026: {contaminated: true, decisional: false, executed: false}
+  forward_shadow: {status: not_started, prerequisite: identifiable_preregistration_and_implementation_freeze_commits}
+drive:
+  bars: ["09:30-09:35", "09:35-09:40", "09:40-09:45"]
+  displacement: close_09_45_minus_open_09_30
+  long_oriented_displacement: close_09_45_minus_open_09_30
+  short_oriented_displacement: open_09_30_minus_close_09_45
+  threshold_source: research_parameters.values.minimum_normalized_drive
+  equality_qualifies: true
+  long_short_symmetry: exact_algebraic_inversion
+atr20:
+  daily_scope: RTH
+  true_range: max(high_minus_low,abs_high_minus_previous_approved_close,abs_low_minus_previous_approved_close)
+  aggregation: arithmetic_mean
+  approved_prior_sessions_source: research_parameters.values.historical_atr_lookback
+  shift_sessions: 1
+  current_session_included: false
+  excluded_sessions: omit_without_imputation
+  fewer_than_20: exclude_event
+  previous_approved_close: derived_by_shift_1_from_immediately_previous_approved_complete_session
+  caller_override_allowed: false
+  duplicate_or_contradictory_session_rows: reject
+causal_extreme:
+  long: maximum_high_09_30_to_09_45
+  short: minimum_low_09_30_to_09_45
+  frozen_at: "09:45"
+  updates_during_pullback: false
+  excursion_anchor: open_09_30
+pullback:
+  begins_in: "09:45-09:50"
+  minimum_ticks_source: research_parameters.values.minimum_initial_adverse_pullback_ticks
+  tick_size_source: frozen_market_conventions.tick_size_by_symbol
+  minimum_distance_formula_id: ticks_times_symbol_tick_size_v1
+  maximum_depth_source: research_parameters.values.maximum_normalized_pullback_depth
+  equality_qualifies: true
+  violation_permanently_invalidates: true
+  restart_allowed: false
+  overlap_allowed: false
+  post_drive_new_extreme_invalidation:
+    rule_id: strict_post_drive_new_extreme_exclusion_v1
+    long: post_drive_high_strictly_above_frozen_drive_extreme
+    short: post_drive_low_strictly_below_frozen_drive_extreme
+    equality_invalidates: false
+    intrabar_priority_rule_id: invalidation_before_pullback_and_confirmation_v1
+    exclusion_reason: EXCLUDED_POST_DRIVE_NEW_EXTREME
+confirmation:
+  confirmation_rule_id: strict_close_beyond_previous_bar_extreme_v1
+  long: current_close_strictly_above_previous_bar_high
+  short: current_close_strictly_below_previous_bar_low
+  first_post_drive_bar_can_confirm: false
+  eligible_post_drive_bars: ["09:45-09:50", "09:50-09:55", "09:55-10:00", "10:00-10:05", "10:05-10:10"]
+  latest_timestamp_source: research_parameters.values.latest_confirmation_executable_boundary
+execution:
+  executable_timestamp_rule_id: first_strictly_later_five_minute_label_v1
+  formula: confirmation_bar_open_t_plus_10min
+  earliest_confirmation_execution: ["09:55", "10:00"]
+  latest_confirmation_execution_source: research_parameters.values.latest_confirmation_executable_boundary
+  price: open
+  latest_timestamp_source: research_parameters.values.latest_confirmation_executable_boundary
+  missing_or_incomplete_bar: exclude_event
+  same_session_required: true
+deduplication:
+  policy: earliest_valid_event
+  maximum_per_symbol_session_source: research_parameters.values.maximum_events_per_symbol_session
+  independent_of_direction: true
+  restarts: false
+  future_comparison: false
+  simultaneous_opposite_direction: exclude_session
+  direction_conflict_exclusion_reason: EXCLUDED_DIRECTION_CONFLICT
+  input_order_or_lexical_priority: false
+descriptives:
+  vwap_role: descriptive_only
+  rvol_role: descriptive_only
+  rvol_definition: current_09_30_09_45_volume_divided_by_prior_20_approved_session_median
+  rvol_shift_sessions: 1
+horizons:
+  primary_minutes_source: research_parameters.values.primary_horizon_minutes
+  primary_label_derivation_id: integer_minutes_plus_min_suffix_v1
+  secondary: [15min, 60min, session_close]
+  secondary_cannot_rescue_primary: true
+  overnight: false
+returns:
+  long: future_price_divided_by_executable_price_minus_1
+  short: executable_price_divided_by_future_price_minus_1
+control:
+  type: unconditional
+  matched_by: [symbol, year, executable_HH_MM_exact_5min, horizon]
+  exclude_own_session_date: true
+  symbols_kept_separate: true
+  broad_hour_buckets: false
+  drive_only_comparator: rejected_landmark_bias
+costs:
+  source: HYP-FCR-01
+  round_trip_formula_id: two_sided_commission_plus_tick_slippage_v1
+  baseline:
+    commission_per_side: 0.0001
+    slippage_ticks_per_execution: 1
+    tick_size_source: frozen_market_conventions.tick_size_by_symbol
+  stress:
+    commission_per_side: 0.0002
+    slippage_ticks_per_execution: 2
+    tick_size_source: frozen_market_conventions.tick_size_by_symbol
+metrics:
+  - event_count
+  - session_count
+  - mean_return
+  - median_return
+  - directional_win_rate
+  - MFE
+  - MAE
+  - bootstrap_ci
+  - results_by_symbol
+  - results_by_year
+  - results_by_direction
+  - annual_concentration
+  - leave_one_largest_session_out_concentration
+  - horizon_availability
+  - unconditional_return
+  - incremental_return
+  - net_return_baseline
+  - net_return_stress
+  - percentage_exceeding_baseline_cost
+  - percentage_exceeding_stress_cost
+minimum_samples:
+  pooled_source: research_parameters.values.minimum_pooled_events
+  per_symbol_source: research_parameters.values.minimum_events_per_symbol
+annual_concentration:
+  contribution: annual_sum_incremental_return
+  formula_id: max_abs_annual_contribution_over_sum_abs_v1
+  maximum_source: research_parameters.values.maximum_annual_effect_concentration
+  required_years: [2022, 2023, 2024]
+  leave_one_largest_session_out_required: true
+  nonfinite_incremental_return: fail_without_silent_omission
+  nonfinite_session_or_annual_contribution: fail
+  missing_or_invalid_session_date: fail
+bootstrap:
+  cluster: session_date
+  same_date_symbols_together: true
+  resamples_source: research_parameters.values.bootstrap_resamples
+  seed_source: research_parameters.values.bootstrap_seed
+  confidence_source: research_parameters.values.bootstrap_confidence_level
+  method_id: clustered_session_percentile_bilateral_v1
+  strict_positive_lower_bounds: [event_return, incremental_return, net_return_baseline]
+discovery_gate:
+  primary_horizon_minutes_source: research_parameters.values.primary_horizon_minutes
+  all_required: true
+  evaluation_rule_id: derive_all_required_from_metrics_v1
+  caller_supplied_boolean_criteria_authoritative: false
+  criteria:
+    - minimum_pooled_events
+    - minimum_events_per_symbol
+    - continuation_long_positive_mean_and_median
+    - continuation_short_positive_mean_and_median
+    - qqq_and_spy_positive_primary_means
+    - gross_mean_positive_in_at_least_two_of_three_years
+    - pooled_incremental_mean_positive
+    - pooled_baseline_net_mean_positive
+    - pooled_stress_net_mean_non_negative
+    - annual_concentration_at_most_0_70
+    - leave_one_session_out_concentration_at_most_0_70
+    - annual_signs_positive_in_at_least_two_of_three_years_original_and_leave_one_out
+    - all_three_bootstrap_lower_bounds_strictly_positive
+    - no_lookahead_or_unresolved_data_quality_failure
+    - no_2025_or_2026_contamination
+    - one_variant_budget_respected
+  failure_classification: discovery_failed
+  pass_classification: discovery_passed
+  pass_validation_2025_unlocked: true
+  fail_validation_2025_unlocked: false
+  paper_eligible: false
+  live_eligible: false
+  diagnostic_or_secondary_rescue: false
+multiplicity:
+  decision_variants: 1
+  formal_correction: none
+  corrected_significance_claim: false
+current_state:
+  discovery_executed: false
+  validation_2025_unlocked: false
+  validation_2025_executed: false
+  historical_2026_executed: false
+  historical_2026_decisional: false
+  paper_eligible: false
+  live_eligible: false
+safety_flags:
+  strategy_created: false
+  orders_created: false
+  position_sizing_used: false
+  broker_connected: false
+  paper_broker_enabled: false
+  live_trading: false
+  orders_sent: false
+  paper_eligible: false
+  live_eligible: false
+forbidden_actions:
+  - read_real_ohlc_during_materialization
+  - read_real_manifests_during_materialization
+  - execute_discovery
+  - execute_validation_2025
+  - execute_historical_2026
+  - create_strategy
+  - create_orders
+  - position_sizing
+  - connect_broker
+canonical_payload:
+  serialization: UTF-8 canonical JSON
+  sorted_keys: true
+  deterministic_separators: true
+  all_yaml_fields_included_except_declared_exclusions: true
+  declared_integrity_metadata: [canonical_payload_hash]
+  explicitly_non_methodological_excluded: [generated_at, generation_timestamp, absolute_path, user, hostname, working_tree, future_execution_sha, preregistration_commit, results, historical_counts, run_derived_data]
+canonical_payload_hash: b763e7d2d01f1d12f9be85fa0238a4ccb21b251baee966f8e421410aaecc651b

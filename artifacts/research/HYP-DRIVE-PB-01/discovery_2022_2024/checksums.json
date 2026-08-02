@@ -1,0 +1,187 @@
+{
+  "algorithm": "SHA-256",
+  "exclusions_from_self_hash": [
+    "checksums.json"
+  ],
+  "inputs": [
+    {
+      "kind": "file",
+      "name": "QQQ_curated_dataset",
+      "path": "data/curated/QQQ_1min_2022-01-01_2026-07-06_curated.csv",
+      "sha256": "2e9fd658e31c698f79bb5bcfcc7077a25e2c7b245d5b5d5f1fc3a158e7931fe4",
+      "size": 27299470
+    },
+    {
+      "kind": "file",
+      "name": "QQQ_manifest",
+      "path": "data/manifests/QQQ_1min_2022-01-01_2026-07-06_curated_manifest.json",
+      "sha256": "aa003d83a6d01ed21e8f76e7d6a2f6617a7d97941a7d007e77b56a94ace15e83",
+      "size": 1516
+    },
+    {
+      "kind": "file",
+      "name": "SPY_curated_dataset",
+      "path": "data/curated/SPY_1min_2022-01-01_2026-07-06_curated.csv",
+      "sha256": "4c28001891013c098a5e1c8050c4a8b539b53756410b6d0502ab4aa18569e787",
+      "size": 27345352
+    },
+    {
+      "kind": "file",
+      "name": "SPY_manifest",
+      "path": "data/manifests/SPY_1min_2022-01-01_2026-07-06_curated_manifest.json",
+      "sha256": "bd174fbf01cbf609cc900b62f91af6c6ae68905bc7cc90a9b1e3133e8af70a9e",
+      "size": 2013
+    },
+    {
+      "kind": "file",
+      "name": "config_yaml",
+      "path": "configs/research/hypotheses/HYP-DRIVE-PB-01.yaml",
+      "sha256": "ce4c93b830abdccc278e331a0ac5e7d606832352d22dda09c6aafc5500b0c955",
+      "size": 10808
+    },
+    {
+      "kind": "logical",
+      "name": "canonical_payload_hash",
+      "sha256": "9ab0c5ad8b18112b01427cf234394ef61608d8e563e7418b95909f4491313efc",
+      "size": 64,
+      "value": "b763e7d2d01f1d12f9be85fa0238a4ccb21b251baee966f8e421410aaecc651b"
+    },
+    {
+      "kind": "logical",
+      "name": "preregistration_freeze_commit",
+      "sha256": "abc7bbe9166f9b485431978fb1eaf5a62889cecf8e575249d9d1e1d973d9cb90",
+      "size": 40,
+      "value": "adb7f7b59b08389883777103e23f98ea298a5965"
+    },
+    {
+      "kind": "logical",
+      "name": "execution_freeze_commit",
+      "sha256": "c688516f424e6aa18e9d2de044c7f77139f9ec2796d91eb736d6d6444f6a2ea0",
+      "size": 40,
+      "value": "3341d439cab38222c023c6657edb0300e503b1f8"
+    },
+    {
+      "kind": "logical",
+      "name": "head_commit",
+      "sha256": "c688516f424e6aa18e9d2de044c7f77139f9ec2796d91eb736d6d6444f6a2ea0",
+      "size": 40,
+      "value": "3341d439cab38222c023c6657edb0300e503b1f8"
+    }
+  ],
+  "outputs": [
+    {
+      "decisional": true,
+      "path": "run_manifest.json",
+      "sha256": "9c39097ecf6e4bca029752aaeba8f176abfe3deb4dc9318d6c4f09b99b3dead8",
+      "size": 3057
+    },
+    {
+      "decisional": false,
+      "path": "dataset_manifest_snapshot.json",
+      "sha256": "11a1660643df6181e49eb332e8efc61abbeb4612c7e903fdee9a3cf08f4ea396",
+      "size": 37335
+    },
+    {
+      "decisional": false,
+      "path": "config_snapshot.yaml",
+      "sha256": "ce4c93b830abdccc278e331a0ac5e7d606832352d22dda09c6aafc5500b0c955",
+      "size": 10808
+    },
+    {
+      "decisional": true,
+      "path": "confirmed_events.csv",
+      "sha256": "7ccf22f2b3ebfc3c4d07f86a489cf9e3e233e3a0673f49e0076bdc00b2ec4845",
+      "size": 1634
+    },
+    {
+      "decisional": true,
+      "path": "event_exclusions.csv",
+      "sha256": "761326bd8f1df523b9abf2fd05cde076f50e1341cf142e727f7e012810f00319",
+      "size": 61675
+    },
+    {
+      "decisional": true,
+      "path": "path_metrics.csv",
+      "sha256": "7447ee0fe1a0c96dd9684632d43378e96f43331951a819da926d4c0e5e97ea86",
+      "size": 4280
+    },
+    {
+      "decisional": true,
+      "path": "unconditional_control.csv",
+      "sha256": "98541aba86410a5b6bd7c17f717e4c69d35cbfdf8d010db9bbf297bc12a6ef2e",
+      "size": 1653
+    },
+    {
+      "decisional": true,
+      "path": "incremental_metrics.csv",
+      "sha256": "3010df024366ebc7d865a456979bffe8de18fcb6fe856d7fde585f356f6c46a8",
+      "size": 584
+    },
+    {
+      "decisional": true,
+      "path": "metrics_pooled.csv",
+      "sha256": "3010df024366ebc7d865a456979bffe8de18fcb6fe856d7fde585f356f6c46a8",
+      "size": 584
+    },
+    {
+      "decisional": true,
+      "path": "metrics_by_symbol.csv",
+      "sha256": "e1a1d802edc88225f4e52f526e1b104fe6e62bf861ff2f61606357f7fbb1e2d1",
+      "size": 1505
+    },
+    {
+      "decisional": true,
+      "path": "metrics_by_year.csv",
+      "sha256": "fcd6af406d0476577d00b7384d8884cd58c789290d7bc14fd13023ebbab34a74",
+      "size": 2495
+    },
+    {
+      "decisional": true,
+      "path": "metrics_by_direction.csv",
+      "sha256": "2eed4365433fc28b93b7ec95a709f77087202a8edc77035984f69bc7c0578f84",
+      "size": 2608
+    },
+    {
+      "decisional": true,
+      "path": "metrics_by_horizon.csv",
+      "sha256": "9dd274706347aca5ffcfc257abaaac2dc55b718a4e0dd329dc060cef180c2887",
+      "size": 1482
+    },
+    {
+      "decisional": true,
+      "path": "concentration_metrics.csv",
+      "sha256": "b0cef491fe568b2ea5a312f645a395741cf2af9b7d5f6e8863eded8ce5721f94",
+      "size": 101
+    },
+    {
+      "decisional": true,
+      "path": "leave_one_out_metrics.csv",
+      "sha256": "023b37a7082bd13517714f6cb67d94aea373547b28c5026f7ad2a50526776f52",
+      "size": 142
+    },
+    {
+      "decisional": true,
+      "path": "bootstrap_intervals.csv",
+      "sha256": "7f4ea0541fa14e585007c1c6caf5605a71f057bdb24a49fdc197fc30f31f9979",
+      "size": 206
+    },
+    {
+      "decisional": true,
+      "path": "cost_threshold_comparison.csv",
+      "sha256": "d177eda7024cf7e32dc3af5e54f5ae8d3c2422738534267860f19afbc4a353cd",
+      "size": 88
+    },
+    {
+      "decisional": true,
+      "path": "discovery_gate.json",
+      "sha256": "a8dbd1b6f51aae4f9370ae380e5536636cf5562f2e1bc1cf9ab00000e2faf185",
+      "size": 4412
+    },
+    {
+      "decisional": false,
+      "path": "execution_progress.json",
+      "sha256": "0fd5c0d0a8e5d2d2a8bf1a221e13b22f142bc10294d78073612c14d2e796b2df",
+      "size": 9339
+    }
+  ]
+}

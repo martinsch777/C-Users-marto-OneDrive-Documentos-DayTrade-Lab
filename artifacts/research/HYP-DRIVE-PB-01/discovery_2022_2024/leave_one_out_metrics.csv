@@ -1,0 +1,2 @@
+scope,removed_session_date,value,passed,validation_status,threshold
+leave_one_largest_session_out,2023-03-28,,False,MISSING_REQUIRED_YEAR,0.7

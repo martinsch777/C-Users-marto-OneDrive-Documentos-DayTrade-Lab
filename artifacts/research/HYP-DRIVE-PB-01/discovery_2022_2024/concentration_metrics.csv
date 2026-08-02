@@ -1,0 +1,2 @@
+scope,value,passed,validation_status,threshold
+annual_concentration,,False,MISSING_REQUIRED_YEAR,0.7
