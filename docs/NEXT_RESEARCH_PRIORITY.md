@@ -1,12 +1,23 @@
 # Next Research Priority
 
-Audit date: 2026-07-28
+Audit date: 2026-08-02
 
-Repository audit commit: `1c3b3b56153d2a067f14eea688b5c9d86540f0f2`
+Repository audit commit: `8bf40206aa2096bbbb12b6dcd15ca561a936c722`
 
 Scope: research governance and planning only. This audit did not execute OHLC,
 open 2025 or 2026, change frozen hypotheses, optimize parameters, create a
 strategy, or authorize paper/live trading.
+
+Current governance decision:
+
+- `HYP-DRIVE-PB-01` is closed as `discovery_failed` with
+  `dominant_failure_reason=insufficient_event_frequency`;
+- it is not promotable and cannot be reoptimized under the same ID;
+- the sole next conceptual-design priority is `HYP-VWAP-DEV-01`;
+- `HYP-VWAP-DEV-01` is `draft_for_human_review` with partial human approval,
+  not preregistered, not implemented, and has not opened discovery;
+- `HYP-CROSS` remains a later alternative and must not be developed in
+  parallel.
 
 ## 1. Global Project State
 
@@ -20,21 +31,21 @@ Of the 44 hypothesis/rule records:
 
 | Lifecycle state | Count |
 | --- | ---: |
-| Executed and closed/rejected | 27 |
+| Executed and closed/rejected | 28 |
 | Executed, diagnostic only, no promotion | 2 |
 | Executed historically, now forward-only lead | 2 |
-| Conceptual family requiring full preregistration | 3 |
+| Conceptual family requiring full preregistration | 2 |
 | Missing required alternative-data history | 10 |
 | Ready to execute now (category A) | 0 |
 
 The lifecycle rows are disjoint and sum to 44. The first three rows account for
-the 31 records with historical execution; the ten alternative-data records were
+the 32 records with historical execution; the ten alternative-data records were
 not executed.
 
 Fully preregistered and genuinely not executed: **0**. The preparation statuses
 still present in several YAML files are stale metadata, not pending research.
-There are three protocol-level concepts not yet fully preregistered:
-HYP-DRIVE-PB, HYP-VWAP-DEV, and HYP-CROSS.
+There are two protocol-level concepts not yet fully preregistered:
+HYP-VWAP-DEV and HYP-CROSS.
 
 Permanent operational state:
 
@@ -76,8 +87,8 @@ apply.
 | HYP-FCR-04 | Structural stop behind sweep | First Candle refinement | QQQ/SPY | 1m source; 5m signals | strategy |
 | HYP-FCR-EVENT-01 | OR sweep post-event paths | First Candle diagnostic | QQQ/SPY | 1m source; 5m research | event_study |
 | HYP-OR-CONT-EVENT-01 | Post-confirmation continuation | First Candle/OR continuation | QQQ/SPY | 5m; primary 30m | event_study |
-| HYP-DRIVE-PB | Opening Drive With Pullback | Opening auction | QQQ/SPY proposed | 1m source; 5m proposed | event_study concept |
-| HYP-VWAP-DEV | VWAP Deviation Continuation/Reversion | VWAP | QQQ/SPY proposed | 1m source; 5m proposed | event_study concept |
+| HYP-DRIVE-PB-01 | Opening Drive + Controlled Pullback Continuation | Opening auction | QQQ/SPY | 1m source; 5m research | causal_event_study |
+| HYP-VWAP-DEV-01 | VWAP Deviation Continuation/Reversion | VWAP | QQQ/SPY proposed | 1m source; 5m proposed | causal_event_study concept |
 | HYP-CROSS | QQQ/SPY Cross-Confirmation | Relative market | QQQ/SPY | 1m source; 5m proposed | event_study concept |
 | LEGACY-CRYPTO-ORB | Opening Range Breakout | Generic crypto strategy | BTC/ETH/SOL | 5m/15m/30m | strategy |
 | LEGACY-CRYPTO-VWAP-PB | VWAP Pullback | Generic crypto strategy | BTC/ETH/SOL | 5m/15m/30m | strategy |
@@ -123,8 +134,8 @@ apply.
 | HYP-FCR-02/03/04 | yes | yes | all failed | blocked | contaminated/non-decisional | discovery_failed | no/no | F - no more variants |
 | HYP-FCR-EVENT-01 | yes | yes | completed | blocked | blocked | stable_but_not_economic | no/no | F - diagnostic record only |
 | HYP-OR-CONT-EVENT-01 | yes | yes | failed | 2025 locked | 2026 not executed | causal continuation failed | no/no | F - no short rescue |
-| HYP-DRIVE-PB | partial protocol | no | not opened | not opened | closed | conceptual only | no/no | B - complete one-variant preregistration |
-| HYP-VWAP-DEV | partial protocol | no | not opened | not opened | closed | conceptual only | no/no | B - complete preregistration |
+| HYP-DRIVE-PB-01 | yes | yes | 2022-2024 failed; 3 events | 2025 locked; not opened | 2026 not executed | discovery_failed; insufficient_event_frequency | no/no | F - preserve only; no reoptimization |
+| HYP-VWAP-DEV-01 | no; design draft only | no | not opened | 2025 locked; not opened | 2026 non-decisional | draft_for_human_review; 3 blockers | no/no | B - resolve B5/B6/B13; do not preregister yet |
 | HYP-CROSS | partial protocol | no | not opened | not opened | closed | overlaps HYP-REL-01 | no/no | E - new motivation required |
 | Five legacy crypto strategies | no formal registry | yes | train/OOS observed | embedded OOS | data through 2026 observed | rejected | no/no | F - do not retune |
 | Two legacy equity OR/FVG strategies | no formal registry | yes | full/OOS observed | embedded OOS | 2026 observed | rejected | no/no | F - OR/FVG branch closed |
@@ -147,7 +158,8 @@ apply.
 | HYP-FCR-02/03/04 | variant YAMLs, family preregistration/results, family artifacts | creation commit `0c1fbe55297cf71972554cc8d79ae786014a68d2`; per-variant canonical hashes in YAML |
 | HYP-FCR-EVENT-01 | YAML, preregistration/results, event artifacts | canonical hash `1b6ad06b974d996cdf6bd0a3a21eae097e94322e80fdec94c2cfc4ec3c18fe81` |
 | HYP-OR-CONT-EVENT-01 | YAML, preregistration/results, discovery artifacts | preregistration `fe13dfe94a6b679a5abf33f079ef8497e368b4f5`; execution freeze `ec8803fae45ec7f07f338350e6d77b80ec6a8929`; hash `d76572e7534e8cf66104ceb2d30dd08a7c0b080fc4460e496b58a08d3736060b` |
-| Conceptual HYP-DRIVE-PB/VWAP-DEV/CROSS | `docs/INTRADAY_HYPOTHESIS_REFINEMENT_PROTOCOL.md` | no hypothesis freeze commit/hash |
+| HYP-DRIVE-PB-01 | design/preregistration/results docs; frozen YAML; discovery artifacts | conceptual `925cede00f3d9c1b4de46e225f98d4636c19a831`; clarification `764478b86a01619620166848204e527f2fb55c55`; preregistration `adb7f7b59b08389883777103e23f98ea298a5965`; execution `3341d439cab38222c023c6657edb0300e503b1f8`; closure `8bf40206aa2096bbbb12b6dcd15ca561a936c722` |
+| Conceptual HYP-VWAP-DEV-01/CROSS | `docs/INTRADAY_HYPOTHESIS_REFINEMENT_PROTOCOL.md`; `docs/HYP_VWAP_DEV_01_DESIGN_DECISIONS.md` | no hypothesis freeze commit/hash |
 | Legacy crypto strategies | `docs/DAYTRADE_REAL_DATA_VALIDATION.md`; `outputs/daytrade` | no central preregistration hash |
 | Legacy equity OR/FVG | `docs/OR_FVG_BASE_RESEARCH_SUMMARY.md`; corresponding outputs | no central hypothesis ID/hash |
 | Edge and lead validation | `docs/EDGE_DISCOVERY.md`; `docs/LEAD_VALIDATION.md`; corresponding outputs | no central hypothesis ID/hash |
@@ -174,6 +186,8 @@ The following branches are closed against further retrospective variants:
 - Base equity OR and OR/FVG.
 - S2, S5, and S2+S5.
 - Relative divergence as defined by HYP-REL-01.
+- Opening Drive + Controlled Pullback as frozen in HYP-DRIVE-PB-01; no
+  HYP-DRIVE-PB-02 or retrospective parameter relaxation.
 
 Closing a branch does not claim the underlying market idea is universally
 false. It prohibits rescue through new cuts of already observed data.
@@ -193,9 +207,9 @@ false. It prohibits rescue through new cuts of already observed data.
 4. **Results without central preregistration.** Legacy crypto, base equity
    OR/FVG, edge-discovery, lead-validation, and funding/OI work is documented
    outside the central registry.
-5. **Documentation without registry rows.** The three conceptual families
-   HYP-DRIVE-PB, HYP-VWAP-DEV, and HYP-CROSS appear in the protocol but not in
-   the registry. They are concepts, not executable preregistrations.
+5. **Documentation without registry rows.** The two remaining conceptual
+   families HYP-VWAP-DEV and HYP-CROSS appear in the protocol but not in the
+   registry. They are concepts, not executable preregistrations.
 6. **Abandoned items without central closure.** Compression/expansion and
    FVG+MSS+RVOL remain described as forward leads but have no registry-level
    `forward_only` closure. Ten funding/OI ideas have machine-readable missing
@@ -221,8 +235,8 @@ not literal duplicate IDs.
 | Pending item | Category | Justification |
 | --- | --- | --- |
 | Any immediate historical run | A: none | No candidate has both a complete current preregistration and sufficient independence. |
-| HYP-DRIVE-PB | B | Has protocol-level rationale and required fields, but lacks exact event, primary horizon, costs, control, gate, config, and freeze. |
-| HYP-VWAP-DEV | B | Same preregistration gaps; prior VWAP work requires explicit non-duplication. |
+| HYP-DRIVE-PB-01 | F | Discovery closed with 3 events and `insufficient_event_frequency`; preserve without reoptimization. |
+| HYP-VWAP-DEV-01 | B | Partial human review completed; B5, B6, and B13 require resolution before preregistration. |
 | FCR/GAP/REL config-state reconciliation | C | Artifacts and docs contradict preparation status fields; hashes must be preserved. |
 | Ten funding/OI ideas | D | Zero symbols with approved historical funding/OI data; no result can be inferred. |
 | HYP-CROSS | E | Substantially overlaps failed HYP-REL-01 and needs a new causal distinction or external motivation. |
@@ -236,135 +250,80 @@ not literal duplicate IDs.
 
 Scoring is 0 to 5, where 5 is favorable. For risk and cost columns, 5 means low
 risk or low computational burden. `MC` means low multiple-comparison risk.
-Maximum raw score is 60. Penalties are then subtracted explicitly.
+Maximum raw score is 60. Penalties are then subtracted explicitly. Scores below
+are retained as the pre-discovery audit record; they are not recomputed after
+results. A closed candidate cannot remain a priority regardless of its prior
+score.
 
 | Candidate | Indep. | Causal | Lookahead | Data | Prereg. | Compute | Control | Economic | Robust | MC | Reuse | PASS/FAIL | Raw | Penalty | Net |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |
-| HYP-DRIVE-PB-01 proposed | 4 | 4 | 4 | 5 | 2 | 4 | 4 | 4 | 3 | 4 | 5 | 5 | 48 | -3 parameters; -2 opening-family proximity | 43 |
+| HYP-DRIVE-PB-01 closed | 4 | 4 | 4 | 5 | 2 | 4 | 4 | 4 | 3 | 4 | 5 | 5 | 48 | Historical pre-discovery score; now closed after gate failure | N/A |
 | HYP-VWAP-DEV-01 proposed | 3 | 4 | 5 | 5 | 2 | 5 | 5 | 3 | 3 | 3 | 5 | 4 | 47 | -4 prior VWAP research; -2 parameter surface | 41 |
 | HYP-CROSS next variant | 2 | 3 | 3 | 5 | 2 | 4 | 5 | 2 | 2 | 3 | 5 | 4 | 40 | -5 HYP-REL overlap; -3 two-leg costs | 32 |
 | Compression/expansion forward | 4 | 4 | 4 | 4 | 3 | 4 | 4 | 2 | 1 | 2 | 5 | 4 | 41 | -5 retrospective strict selection; -4 few events; -2 parameters | 30 |
 | FVG+MSS+RVOL forward | 3 | 4 | 4 | 3 | 3 | 3 | 3 | 3 | 2 | 1 | 4 | 4 | 37 | -5 retrospective filter; -3 family saturation; -2 cost sensitivity | 27 |
 | Funding/OI family | 5 | 4 | 4 | 0 | 1 | 2 | 3 | 4 | 3 | 2 | 3 | 3 | 34 | -5 missing data; -3 ten comparisons; -2 cost complexity | 24 |
 
-Past profitability is not used as the sole ranking criterion. The first two
-rank because they can be made causal, controlled, low-lookahead, and
-decisive using approved data. Neither is category A until preregistration is
-complete and independently reviewed.
+Past profitability was not used as the sole ranking criterion. The table is a
+historical audit snapshot: HYP-DRIVE-PB-01 has since failed and is removed from
+the candidate set. HYP-VWAP-DEV-01 is the current category-B design priority,
+not a category-A executable hypothesis.
 
-## 7. Main Recommendation
+## 7. Superseded Pre-Discovery Recommendation
 
-### Proposed ID
+The 2026-07-28 recommendation prioritized `HYP-DRIVE-PB-01`. It was subsequently
+preregistered, executed once, and closed as `discovery_failed` for
+`insufficient_event_frequency`. Its frozen design, execution record, and closure
+remain in `docs/HYP_DRIVE_PB_01_PREREGISTRATION.md`,
+`docs/HYP_DRIVE_PB_01_EXECUTION_RECORD.md`, and
+`docs/HYP_DRIVE_PB_01_DISCOVERY_RESULTS.md`. This historical summary is not an
+operational instruction: the hypothesis must not be reopened, relaxed, or
+reoptimized.
 
-`HYP-DRIVE-PB-01`
+## 8. Current Main Recommendation
 
-This is a proposed child of the existing conceptual family `HYP-DRIVE-PB`. The
-next task is preregistration only, not execution or strategy implementation.
+Proposed `HYP-VWAP-DEV-01`: a one-variant equity causal event study asking
+whether an ex-ante-defined deviation from causal RTH session VWAP predicts a
+30-minute oriented return relative to matched unconditional returns.
 
-### Exact Question
+Current state:
 
-After a causally observed directional opening drive in QQQ or SPY, does an
-orderly pullback that preserves session VWAP predict positive same-direction
-30-minute return from the next available 5-minute open, relative to matched
-unconditional returns and after conservative round-trip costs?
+- `design_status=draft_for_human_review`;
+- `human_review_performed=true`;
+- `human_approved=false`;
+- exactly three decisions remain blocked: B5, B6, and B13;
+- not preregistered;
+- not implemented;
+- discovery not executed;
+- 2025 locked;
+- historical 2026 non-decisional.
 
-### Independence
-
-The proposed mechanism is continuation after an opening auction imbalance and
-controlled retracement. It must not use:
-
-- opening-range high/low sweeps;
-- FVG presence or absence;
-- First Candle confirmation rules;
-- gap direction as a required signal;
-- EVENT-07/EVENT-08 labels;
-- `continuation_short` selection from HYP-OR-CONT-EVENT-01.
-
-This separates it from the closed First Candle family. It also differs from
-HYP-GAP-03 because eligibility is based on regular-session drive and pullback,
-not overnight gap continuation. Gap must be retained only as a preregistered
-diagnostic/control variable and may not become a post hoc filter.
-
-### Proposed Frozen Design
-
-| Field | Recommendation |
-| --- | --- |
-| Dataset | Approved local curated Alpaca SIP raw-adjusted 1-minute datasets and manifests |
-| Symbols | QQQ and SPY, both mandatory |
-| Research timeframe | Causal 5-minute bars built from 1-minute RTH data |
-| Discovery | 2022-01-01 through 2024-12-31 only |
-| Validation | 2025 remains blocked unless discovery gate passes and a separate authorization is given |
-| Holdout | 2026 remains blocked/non-decisional |
-| Primary horizon | 30 minutes from next 5-minute open after pullback confirmation |
-| Secondary horizons | 15 minutes, 60 minutes, session close; cannot override primary failure |
-| Control | Matched unconditional return by symbol, year, executable-time bucket, and horizon; preregister a drive-only comparator |
-| Baseline costs | 1 bp commission per side plus 1 tick adverse slippage per execution |
-| Stress costs | 2 bps commission per side plus 2 ticks adverse slippage per execution |
-| Strategy status | Event study only; no stops, targets, sizing, PnL curve, or orders |
-
-Exact drive magnitude, drive window, pullback depth, confirmation deadline, and
-RVOL policy must be frozen once in the preregistration. They must not be supplied
-as ranges or swept. The preferred budget is one primary definition and zero
-historical variants.
-
-### Proposed Discovery Gate
-
-All criteria must pass at the 30-minute primary horizon:
-
-- at least 150 pooled events and at least 50 per symbol;
-- same-direction mean and median are positive;
-- QQQ and SPY means have the expected sign;
-- expected sign in at least two of three discovery years;
-- incremental mean versus matched unconditional control is positive;
-- mean return exceeds baseline round-trip cost;
-- stress-cost result is non-negative;
-- no single year contributes more than 70% of positive aggregate effect;
-- session-clustered bootstrap is not strongly contradictory;
-- no lookahead, timestamp misalignment, manifest violation, or 2025/2026 use.
-
-Failure of any criterion closes the hypothesis. Secondary horizons, symbol
-slices, gap slices, direction slices, and favorable calendar cuts cannot rescue
-it.
-
-### Risks
-
-- Conceptual proximity to prior opening-session research.
-- Too many plausible definitions of drive and pullback.
-- Event scarcity if the definition is too strict.
-- VWAP can accidentally become an optimized filter.
-- A pooled result can hide symbol or annual disagreement.
-- The event-study return may be too small relative to costs.
-
-### Files Required Before Any Discovery
-
-- `configs/research/hypotheses/HYP-DRIVE-PB-01.yaml`
-- `docs/HYP_DRIVE_PB_01_PREREGISTRATION.md`
-- a canonical payload hash and preregistration commit
-- documentary tests for schema, periods, costs, gate, safety, and blocked stages
-- a human-approved registry row with status `preregistered_not_executed`
-
-Implementation, runner, and discovery artifacts are explicitly out of scope
-until those items are reviewed and frozen.
-
-## 8. Alternative
-
-Proposed `HYP-VWAP-DEV-01`: a one-variant equity event study asking whether a
-volatility-scaled, causally measured VWAP deviation at a fixed intraday
-timestamp exhibits 30-minute reversion or continuation relative to matched
-unconditional returns.
+Mean reversion is approved as the sole mechanism; continuation is prohibited.
+The approval was made without comparing historical performance between the two
+mechanisms.
 
 It also requires category B work before execution. The preregistration must:
 
-- select reversion or continuation in advance, not report both as competing
-  rescue paths;
-- use one fixed timestamp and one fixed normalized-deviation threshold;
+- resolve one strict symmetric percentage-deviation threshold and its ex-ante
+  source (B5);
+- resolve the bounded eligible intraday window and early-close policy (B6);
+- use the first strict breach, immediate next-bar confirmation, next-bar-open
+  causal execution, and one candidate per symbol-session;
+- retain 30 minutes as the sole primary horizon;
+- resolve and freeze the complete all-required gate (B13);
 - explain why it is not the rejected generic crypto VWAP Pullback strategy;
 - avoid gap/OR/FVG filters;
-- freeze the same symbol, year, control, cost, and bootstrap gates as the main
-  proposal.
+- preserve the approved symbol, temporal partition, control, cost, and safety
+  decisions before any historical execution.
 
-This alternative ranks slightly lower because VWAP has already appeared in
-failed generic and GAP research, reducing conceptual independence.
+The design must explain why it is not the rejected generic crypto VWAP
+Pullback, Extreme Mean Reversion, or prior two-ATR/RSI VWAP-deviation strategy.
+It must also avoid gap/OR/FVG filters and any relaxation inferred from the
+DRIVE-PB exclusion ledger.
+
+`HYP-CROSS` remains the documented second alternative, but it substantially
+overlaps HYP-REL-01. It stays behind VWAP-DEV and must not be initiated in
+parallel.
 
 ## 9. Hypotheses That Must Not Continue
 
@@ -381,18 +340,22 @@ failed generic and GAP research, reducing conceptual independence.
 
 ## 10. Research Sequence
 
-1. Human governance decision: approve or reject `HYP-DRIVE-PB-01` as the sole
-   next preregistration target.
-2. Perform a ledger migration plan for missing rows and stale statuses without
+1. Resolve B5, B6, and B13 in
+   `docs/HYP_VWAP_DEV_01_DESIGN_DECISIONS.md` without opening historical
+   outcomes.
+2. Record full human approval or rejection of the completed one-variant design
+   for `HYP-VWAP-DEV-01`.
+3. Perform a ledger migration plan for missing rows and stale statuses without
    modifying frozen payloads or hashes.
-3. Write the exact one-variant preregistration and documentary tests.
-4. Freeze config, costs, primary horizon, control, gate, report schema, and
+4. Only after human approval, write the exact one-variant preregistration and
+   documentary tests.
+5. Freeze config, costs, primary horizon, control, gate, report schema, and
    canonical hash in a dedicated commit.
-5. Run an integrity/preflight review that does not read result-period OHLC.
-6. Only after explicit authorization, execute 2022-2024 discovery once.
-7. Close as pass/fail from the primary gate; do not inspect new variants.
-8. Keep 2025 closed until a separate post-discovery governance decision.
-9. Keep 2026 closed regardless of discovery outcome.
+6. Run an integrity/preflight review that does not read result-period OHLC.
+7. Only after explicit authorization, execute 2022-2024 discovery once.
+8. Close as pass/fail from the primary gate; do not inspect new variants.
+9. Keep 2025 closed until a separate post-discovery governance decision.
+10. Keep 2026 closed regardless of discovery outcome.
 
 ## 11. Conditions To Open Discovery
 
@@ -477,7 +440,8 @@ retrospective rescue; it does not erase the research record.
 
 There is no legitimate hypothesis ready for immediate execution.
 
-The next research task should be the preregistration-only preparation of
-`HYP-DRIVE-PB-01`. `HYP-VWAP-DEV-01` is the alternative. The proposed
-`HYP-OR-CONT-SHORT-02` and any equivalent retrospective short rescue must remain
-frozen and uncreated.
+`HYP-DRIVE-PB-01` is closed as `discovery_failed` with
+`insufficient_event_frequency`; it is not promotable or reoptimizable under the
+same ID. The sole next priority is resolution of B5, B6, and B13 for
+`HYP-VWAP-DEV-01`. It is not preregistered, not implemented, and has not opened
+discovery. `HYP-CROSS` remains a later alternative, not a parallel workstream.
