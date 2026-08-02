@@ -22,13 +22,26 @@ clarification_change_control:
   gate_thresholds_changed: false
   temporal_partitions_changed: false
   decision_variants_changed: false
+amendment_id: HYP-VWAP-DEV-01-AMD-01
+amendment_type: deterministic_leave_one_out_tie_resolution
+amendment_parent_commit: 236ca1c6c83695962b51f4ed67b57898130d8f6e
+amendment_change_control:
+  selection_changed: false
+  timing_changed: false
+  returns_changed: false
+  costs_changed: false
+  gate_thresholds_changed: false
+  decision_variants_changed: false
+  leave_one_out_selection_order_clarified: true
 preregistration_status: frozen
 preregistration_created: true
 preregistration_frozen: true
 methodology_frozen: true
 human_approved: true
-implementation_allowed: false
+implementation_allowed: true
 implementation_started: false
+historical_data_access_allowed: false
+discovery_execution_allowed: false
 discovery_executed: false
 validation_2025_unlocked: false
 validation_2025_executed: false
@@ -299,6 +312,17 @@ concentration:
     session_contribution: sum_incremental_return_by_session_date_all_symbols
     removed_unit: complete_session_date
     selection: maximum_absolute_total_incremental_contribution
+    selection_metric: absolute_session_incremental_contribution
+    aggregation_unit: session_date
+    cross_symbol_grouping: true
+    selection_order:
+      primary: absolute_contribution_descending
+      tie_break: session_date_ascending_oldest_first
+    remove_exactly_one_session_date: true
+    row_order_independent: true
+    random_tie_break: false
+    numeric_tolerance: none
+    non_finite_policy: fail
     remove_only_one_symbol_or_row: false
     annual_concentration_maximum: 0.70
     pooled_incremental_mean_operator: ">"
@@ -433,8 +457,10 @@ current_state:
   preregistration_created: true
   preregistration_frozen: true
   methodology_frozen: true
-  implementation_allowed: false
+  implementation_allowed: true
   implementation_started: false
+  historical_data_access_allowed: false
+  discovery_execution_allowed: false
   discovery_executed: false
   validation_2025_unlocked: false
   validation_2025_executed: false
@@ -470,4 +496,6 @@ canonical_payload:
   all_yaml_fields_included_except_declared_exclusions: true
   declared_integrity_metadata: [canonical_payload_sha256]
   explicitly_non_methodological_excluded: [generated_at, generation_timestamp, absolute_path, user, hostname, working_tree, future_execution_sha, preregistration_commit, results, historical_counts, run_derived_data]
-canonical_payload_sha256: 7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c
+canonical_payload_sha256_previous: 7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c
+canonical_payload_sha256_previous_status: superseded
+canonical_payload_sha256: 8420c66ffb97da893a9dcd3ebbc4903af116a4104891204397f554a0d12118eb

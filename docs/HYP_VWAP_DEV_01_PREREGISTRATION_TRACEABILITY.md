@@ -16,8 +16,13 @@ preregistration_frozen: true
 preregistration_freeze_commit: 6fbd8f09b279c0b83d31602c7c75a42787c70b42
 preregistration_freeze_commit_message: Freeze HYP-VWAP-DEV-01 preregistration
 methodology_frozen: true
-implementation_allowed: false
+amendment_id: HYP-VWAP-DEV-01-AMD-01
+amendment_type: deterministic_leave_one_out_tie_resolution
+amendment_parent_commit: 236ca1c6c83695962b51f4ed67b57898130d8f6e
+implementation_allowed: true
 implementation_started: false
+historical_data_access_allowed: false
+discovery_execution_allowed: false
 discovery_executed: false
 validation_2025_unlocked: false
 historical_2026_decisional: false
@@ -26,7 +31,9 @@ translation_complete: true
 unresolved_translation_blockers: 0
 traceability_complete: true
 material_blockers_remaining: 0
-canonical_payload_sha256: 7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c
+canonical_payload_sha256_previous: 7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c
+canonical_payload_sha256_previous_status: superseded
+canonical_payload_sha256: 8420c66ffb97da893a9dcd3ebbc4903af116a4104891204397f554a0d12118eb
 ```
 
 The normative source is `docs/HYP_VWAP_DEV_01_DESIGN_DECISIONS.md` at the
@@ -34,13 +41,26 @@ conceptual-design freeze commit above. The complete machine-readable preregistra
 `configs/research/hypotheses/HYP-VWAP-DEV-01.yaml`. This traceability record
 also incorporates the non-methodological logical clarification frozen in
 `docs/HYP_VWAP_DEV_01_PREREGISTRATION_CLARIFICATIONS.md`. The preregistration
-payload is frozen, but implementation and historical access remain prohibited.
+payload is frozen as amended. Core methodology and synthetic-test
+implementation are authorized; historical access and discovery remain prohibited.
 
 The final preregistration audit previously returned `AUDIT_FAIL` because
 `PRO-01` was self-referential. `HYP-VWAP-DEV-01-CLAR-01`, frozen at commit
 `9d2bbf721c70da7a4b02df49d9973cffc77c09f6`, resolves that blocker without
 changing B1-B15, any gate threshold, or any decision variant. No material
 blocker remains after this correction.
+
+During implementation planning, `VWAP-IMPL-BLK-01` identified that the
+leave-one-largest-session-out rule did not specify an exact tie-break. The
+human-approved internal amendment `HYP-VWAP-DEV-01-AMD-01` resolves it without
+changing selection, timing, returns, costs, gate thresholds, or decision
+variants. For each date, contribution is the sum of primary-horizon
+`incremental_return` over every confirmed QQQ/SPY event on that date. Selection
+uses `(-abs(session_incremental_contribution[d]), session_date)`, where ISO
+dates sort ascending, so an exact tie selects the oldest date. Exactly one
+complete date is removed, all symbols on it remain grouped, row order and symbol
+order cannot affect selection, no randomness or numeric tolerance is used, and
+missing or non-finite contribution is `FAIL`. Zero methodological blockers remain.
 
 ## B1-B15 Coverage
 
@@ -58,15 +78,15 @@ blocker remains after this correction.
 | B10 | `horizons`; `returns_and_path_metrics` | true | true | 30min primary; 15min, 60min, close descriptive; all originate at execution |
 | B11 | `unconditional_control` | true | true | Exact symbol/year/HH:MM/horizon control; own date excluded; same orientation |
 | B12 | `costs` | true | true | Inherited baseline and stress round-trip formulas |
-| B13 | `bootstrap`; `annual_stability`; `concentration`; `missing_data_policy`; `discovery_gate` | true | true | Complete 25-criterion substantive gate plus non-recursive PRO-01 promotion aggregation |
+| B13 | `bootstrap`; `annual_stability`; `concentration`; `missing_data_policy`; `discovery_gate` | true | true | Complete 25-criterion substantive gate plus non-recursive PRO-01; deterministic amended LOO selection feeds CON-02..04 |
 | B14 | `temporal_splits` | true | true | Discovery 2022-2024; 2025 locked; 2026 non-decisional |
-| B15 | `current_state`; `safety_flags`; `forbidden_actions` | true | true | Event study only; implementation, strategy, sizing, orders, broker, paper/live disabled |
+| B15 | `current_state`; `safety_flags`; `forbidden_actions` | true | true | Synthetic implementation only; historical/discovery access, strategy, sizing, orders, broker, paper/live disabled |
 
 ## Normative Rule Coverage
 
 | design_section | yaml_path | represented | exact_match | notes |
 | --- | --- | --- | --- | --- |
-| Identity and governance | root; `approval`; `configuration_governance` | true | true | Human-approved frozen preregistration; implementation remains prohibited |
+| Identity and governance | root; `approval`; `configuration_governance` | true | true | Human-approved frozen preregistration amended by AMD-01; synthetic implementation authorized, historical/discovery access prohibited |
 | Selection provenance | root selection/history flags | true | true | All selection, return, event-count, search, and threshold-comparison flags false |
 | Causal resample | `causal_resample` | true | true | Standard OHLCV, five contiguous source bars, completed-bar availability, calendar early closes |
 | VWAP formula | `causal_vwap` | true | true | Session-reset cumulative typical-price-volume formula through completed bar t |
@@ -86,7 +106,8 @@ blocker remains after this correction.
 | Bootstrap | `bootstrap` | true | true | Session clusters, same-date symbols together, percentile 95%, 10,000, seed 20260802 |
 | Annual stability | `annual_stability` | true | true | All three years with n>=40; gross and incremental positive in >=2 years |
 | Concentration | `concentration` | true | true | Annual incremental contribution share <=0.70 |
-| Leave-one-out | `concentration.leave_one_largest_session_out` | true | true | Complete largest-contribution date removed; annual n>=40 reapplied |
+| Leave-one-out selection | `concentration.leave_one_largest_session_out.selection_metric`; `.selection_order` | true | true | Sum primary incremental returns by date across QQQ/SPY; order by `(-abs(contribution), session_date)` and choose oldest exact tie |
+| Leave-one-out removal | `concentration.leave_one_largest_session_out` | true | true | Exactly one complete date removed with QQQ/SPY grouped and annual n>=40 reapplied; row-order independent; non-finite is FAIL |
 | Missing required data | `missing_data_policy`; gate criterion policies | true | true | False/missing/non-finite/insufficient/non-estimable always fails |
 | Promotion and safety | `discovery_gate`; `current_state`; `safety_flags` | true | true | PRO-01 aggregates exactly 25 substantive criteria and is the sole validation unlock; no discretionary promotion or trading capability |
 
@@ -116,9 +137,9 @@ blocker remains after this correction.
 | STB-01 | `discovery_gate.criteria[criterion_id=STB-01]` | true | true | Gross mean positive in at least 2 required years |
 | STB-02 | `discovery_gate.criteria[criterion_id=STB-02]` | true | true | Incremental mean positive in at least 2 required years |
 | CON-01 | `discovery_gate.criteria[criterion_id=CON-01]` | true | true | Annual concentration `<=0.70` |
-| CON-02 | `discovery_gate.criteria[criterion_id=CON-02]` | true | true | Leave-one-session-out annual concentration `<=0.70` |
-| CON-03 | `discovery_gate.criteria[criterion_id=CON-03]` | true | true | Leave-one-session-out pooled incremental mean `>0` |
-| CON-04 | `discovery_gate.criteria[criterion_id=CON-04]` | true | true | Leave-one-session-out positive incremental years `>=2`, each year n>=40 |
+| CON-02 | `concentration.leave_one_largest_session_out`; `discovery_gate.criteria[criterion_id=CON-02]` | true | true | Deterministically selected one-date removal feeds annual concentration `<=0.70` |
+| CON-03 | `concentration.leave_one_largest_session_out`; `discovery_gate.criteria[criterion_id=CON-03]` | true | true | The same selected removal feeds pooled incremental mean `>0` |
+| CON-04 | `concentration.leave_one_largest_session_out`; `discovery_gate.criteria[criterion_id=CON-04]` | true | true | The same selected removal feeds positive incremental years `>=2`, each year n>=40 |
 | PRO-01 | `discovery_gate.criteria[criterion_id=PRO-01]` | true | true | All 25 explicitly listed substantive criteria pass before validation unlock; `self_inclusion=false`; evaluated after all substantive criteria |
 
 The exact normative substantive input set is:
@@ -158,11 +179,12 @@ variable_timestamps: excluded
 absolute_paths: excluded
 local_environment_information: excluded
 algorithm: SHA-256
-superseded_canonical_payload_sha256: 0526e9fcd01865932c8dc77b02a1e793578c616eb9644acd8d635d784f92a465
-canonical_payload_sha256: 7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c
-independent_hash_run_1: 7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c
-independent_hash_run_2: 7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c
-serialized_payload_bytes: 24437
+canonical_payload_sha256_previous: 7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c
+canonical_payload_sha256_previous_status: superseded
+canonical_payload_sha256: 8420c66ffb97da893a9dcd3ebbc4903af116a4104891204397f554a0d12118eb
+independent_hash_run_1: 8420c66ffb97da893a9dcd3ebbc4903af116a4104891204397f554a0d12118eb
+independent_hash_run_2: 8420c66ffb97da893a9dcd3ebbc4903af116a4104891204397f554a0d12118eb
+serialized_payload_bytes: 25540
 ```
 
 The included payload is every YAML path, including deterministic governance
@@ -174,18 +196,16 @@ results, historical counts, and run-derived data. These exclusions prevent
 self-reference and machine-local or post-execution metadata from changing the
 frozen methodological payload.
 
-The preregistration freeze commit SHA
-`6fbd8f09b279c0b83d31602c7c75a42787c70b42` was registered after the freeze
-to avoid self-reference. The commit SHA is documentary metadata and is not
-part of the canonical payload or the YAML. This post-freeze update does not
-modify methodology, B1-B15, or any gate criterion. The canonical hash remains
-`7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c`
-without recalculation, the preregistration remains frozen, and implementation
-is still not authorized.
+The prior preregistration freeze SHA remains historical metadata. The commit
+containing these six amended files will be the active preregistration amendment
+freeze; its SHA is supplied externally to implementation and is not inserted
+into this payload. No post-freeze metadata-only commit is required.
 
 ## Translation Conclusion
 
 Every approved decision, normative rule, and gate criterion is represented
-with `represented=true` and `exact_match=true`. The prior `AUDIT_FAIL` blocker
-is resolved, traceability is complete, and zero material blockers remain. The
-preregistration and methodology are frozen; implementation stays prohibited.
+with `represented=true` and `exact_match=true`. PRO-01 remains non-recursive,
+the LOO selection blocker is resolved, traceability is complete, and zero
+material blockers remain. The preregistration and methodology are frozen as
+amended. Core methodology and synthetic tests may now be implemented; real
+historical access and discovery remain closed.

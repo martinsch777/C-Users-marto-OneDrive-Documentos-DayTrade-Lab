@@ -13,11 +13,12 @@ Current governance decision:
 - `HYP-DRIVE-PB-01` is closed as `discovery_failed` with
   `dominant_failure_reason=insufficient_event_frequency`;
 - it is not promotable and cannot be reoptimized under the same ID;
-- `HYP-VWAP-DEV-01` is `preregistered_not_executed`, with its preregistration
-  and methodology frozen, but remains not implemented and has not opened
-  discovery;
-- its sole next authorized task is to prepare the implementation plan and
-  implementation test contract;
+- `HYP-VWAP-DEV-01` is `preregistration_amended_and_frozen`, with its
+  implementation plan and test contract approved;
+- synthetic implementation is authorized but not started; historical-data
+  access remains blocked and discovery has not been opened;
+- its sole next authorized task is `implement core methodology and synthetic
+  tests` under amendment `HYP-VWAP-DEV-01-AMD-01`;
 - `HYP-CROSS` remains a later alternative and must not be developed in
   parallel.
 
@@ -138,7 +139,7 @@ apply.
 | HYP-FCR-EVENT-01 | yes | yes | completed | blocked | blocked | stable_but_not_economic | no/no | F - diagnostic record only |
 | HYP-OR-CONT-EVENT-01 | yes | yes | failed | 2025 locked | 2026 not executed | causal continuation failed | no/no | F - no short rescue |
 | HYP-DRIVE-PB-01 | yes | yes | 2022-2024 failed; 3 events | 2025 locked; not opened | 2026 not executed | discovery_failed; insufficient_event_frequency | no/no | F - preserve only; no reoptimization |
-| HYP-VWAP-DEV-01 | frozen | no | not opened | 2025 locked; not opened | 2026 non-decisional | preregistered_not_executed; methodology_frozen | no/no | B - prepare the implementation plan and implementation test contract only |
+| HYP-VWAP-DEV-01 | amended/frozen; plan/test approved; synthetic implementation authorized, not started | no | not opened | 2025 locked; not opened | 2026 non-decisional | implementation_authorized_not_started; historical/discovery access false | no/no | B - implement core methodology and synthetic tests |
 | HYP-CROSS | partial protocol | no | not opened | not opened | closed | overlaps HYP-REL-01 | no/no | E - new motivation required |
 | Five legacy crypto strategies | no formal registry | yes | train/OOS observed | embedded OOS | data through 2026 observed | rejected | no/no | F - do not retune |
 | Two legacy equity OR/FVG strategies | no formal registry | yes | full/OOS observed | embedded OOS | 2026 observed | rejected | no/no | F - OR/FVG branch closed |
@@ -162,7 +163,7 @@ apply.
 | HYP-FCR-EVENT-01 | YAML, preregistration/results, event artifacts | canonical hash `1b6ad06b974d996cdf6bd0a3a21eae097e94322e80fdec94c2cfc4ec3c18fe81` |
 | HYP-OR-CONT-EVENT-01 | YAML, preregistration/results, discovery artifacts | preregistration `fe13dfe94a6b679a5abf33f079ef8497e368b4f5`; execution freeze `ec8803fae45ec7f07f338350e6d77b80ec6a8929`; hash `d76572e7534e8cf66104ceb2d30dd08a7c0b080fc4460e496b58a08d3736060b` |
 | HYP-DRIVE-PB-01 | design/preregistration/results docs; frozen YAML; discovery artifacts | conceptual `925cede00f3d9c1b4de46e225f98d4636c19a831`; clarification `764478b86a01619620166848204e527f2fb55c55`; preregistration `adb7f7b59b08389883777103e23f98ea298a5965`; execution `3341d439cab38222c023c6657edb0300e503b1f8`; closure `8bf40206aa2096bbbb12b6dcd15ca561a936c722` |
-| HYP-VWAP-DEV-01 | `configs/research/hypotheses/HYP-VWAP-DEV-01.yaml`; `docs/HYP_VWAP_DEV_01_DESIGN_DECISIONS.md`; `docs/HYP_VWAP_DEV_01_PREREGISTRATION_CLARIFICATIONS.md`; `docs/HYP_VWAP_DEV_01_PREREGISTRATION_TRACEABILITY.md` | conceptual design `5a0c3dee3af99093fb5ff5eb2ab641767d1e086f`; clarification `9d2bbf721c70da7a4b02df49d9973cffc77c09f6`; preregistration `6fbd8f09b279c0b83d31602c7c75a42787c70b42`; canonical hash `7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c` |
+| HYP-VWAP-DEV-01 | Frozen amended YAML and governance documents; approved implementation plan and test contract | conceptual `5a0c3dee3af99093fb5ff5eb2ab641767d1e086f`; clarification `9d2bbf721c70da7a4b02df49d9973cffc77c09f6`; prior preregistration freeze `6fbd8f09b279c0b83d31602c7c75a42787c70b42`; amendment `HYP-VWAP-DEV-01-AMD-01`; parent metadata `236ca1c6c83695962b51f4ed67b57898130d8f6e`; canonical hash `8420c66ffb97da893a9dcd3ebbc4903af116a4104891204397f554a0d12118eb` |
 | Conceptual HYP-CROSS | `docs/INTRADAY_HYPOTHESIS_REFINEMENT_PROTOCOL.md` | no hypothesis freeze commit/hash |
 | Legacy crypto strategies | `docs/DAYTRADE_REAL_DATA_VALIDATION.md`; `outputs/daytrade` | no central preregistration hash |
 | Legacy equity OR/FVG | `docs/OR_FVG_BASE_RESEARCH_SUMMARY.md`; corresponding outputs | no central hypothesis ID/hash |
@@ -240,7 +241,7 @@ not literal duplicate IDs.
 | --- | --- | --- |
 | Any immediate historical run | A: none | No candidate has both a complete current preregistration and sufficient independence. |
 | HYP-DRIVE-PB-01 | F | Discovery closed with 3 events and `insufficient_event_frequency`; preserve without reoptimization. |
-| HYP-VWAP-DEV-01 | B | Preregistration and methodology frozen with no blockers; next authorized task is the implementation plan and implementation test contract only. |
+| HYP-VWAP-DEV-01 | B | Preregistration amended and frozen; plan and test contract approved; synthetic implementation authorized but not started; historical data and discovery remain blocked. |
 | FCR/GAP/REL config-state reconciliation | C | Artifacts and docs contradict preparation status fields; hashes must be preserved. |
 | Ten funding/OI ideas | D | Zero symbols with approved historical funding/OI data; no result can be inferred. |
 | HYP-CROSS | E | Substantially overlaps failed HYP-REL-01 and needs a new causal distinction or external motivation. |
@@ -292,7 +293,8 @@ whether an ex-ante-defined deviation from causal RTH session VWAP predicts a
 
 Current state:
 
-- `status=preregistered_not_executed`;
+- `status=implementation_authorized_not_started`;
+- `preregistration_state=preregistration_amended_and_frozen`;
 - `design_status=conceptual_design_human_approved`;
 - `human_review_performed=true`;
 - `human_approved=true`;
@@ -302,11 +304,19 @@ Current state:
 - `conceptual_design_freeze_commit=5a0c3dee3af99093fb5ff5eb2ab641767d1e086f`;
 - `clarification_freeze_commit=9d2bbf721c70da7a4b02df49d9973cffc77c09f6`;
 - `preregistration_freeze_commit=6fbd8f09b279c0b83d31602c7c75a42787c70b42`;
-- `canonical_payload_sha256=7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c`;
-- `implementation_allowed=false`;
-- `implementation_status=implementation_not_authorized`;
+- `amendment_id=HYP-VWAP-DEV-01-AMD-01`;
+- `canonical_payload_sha256_previous=7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c`;
+- `canonical_payload_sha256=8420c66ffb97da893a9dcd3ebbc4903af116a4104891204397f554a0d12118eb`;
+- `implementation_plan_status=implementation_plan_approved`;
+- `implementation_test_contract_status=implementation_test_contract_approved`;
+- `human_review_status=human_approved`;
+- `implementation_allowed=true`;
+- `implementation_status=implementation_not_started`;
+- `historical_data_access_allowed=false`;
+- `discovery_execution_allowed=false`;
 - `discovery_status=discovery_not_opened`;
-- `blockers_remaining=0`;
+- `implementation_plan_classification=PLAN_READY`;
+- `implementation_plan_blockers_remaining=0`;
 - 2025 locked;
 - historical 2026 non-decisional.
 
@@ -322,13 +332,12 @@ There is at most one candidate per symbol-session. The sole primary horizon is
 30 minutes, and the approved discovery gate is all-required. Secondary
 horizons cannot rescue a primary failure.
 
-The next authorized task is only to prepare the implementation plan and
-implementation test contract. This permits designing the plan and its
-synthetic-test contract, but does not authorize creating the implementation,
-executable tests, or a runner; opening datasets, 2025, or 2026; executing
-discovery; or creating orders or paper/live capability. Any later
-implementation must preserve the approved design without additional variants
-or discretionary decisions.
+The next authorized task is `implement core methodology and synthetic tests`.
+That task must not open OHLC or real manifests, execute discovery, open 2025,
+use 2026, create real artifacts, connect a broker, or create paper/live
+capability. Implementation must preserve the approved design without additional
+variants or discretionary decisions; no further implementation-plan freeze is
+required before starting this synthetic work.
 
 The design must explain why it is not the rejected generic crypto VWAP
 Pullback, Extreme Mean Reversion, or prior two-ATR/RSI VWAP-deviation strategy.
@@ -354,22 +363,17 @@ parallel.
 
 ## 10. Research Sequence
 
-1. Prepare the implementation plan and implementation test contract for
-   `HYP-VWAP-DEV-01`, without creating code, tests, a runner, or accessing
-   historical data.
-2. Independently review that plan and contract against the frozen
-   preregistration and exact preservation of B1-B15.
-3. Perform a ledger migration plan for missing rows and stale statuses without
+1. Implement HYP-VWAP-DEV-01 core methodology and synthetic tests without
+   opening OHLC, real manifests, 2025, 2026, or discovery.
+2. Perform a ledger migration plan for missing rows and stale statuses without
    modifying frozen payloads or hashes.
-4. Only after separate explicit authorization, implement code, tests, and a
-   runner against the frozen canonical configuration.
-5. Freeze the reviewed implementation in a dedicated commit without changing
+3. Freeze the reviewed implementation in a dedicated commit without changing
    the preregistered config, costs, primary horizon, control, gate, or hash.
-6. Run an integrity/preflight review that does not read result-period OHLC.
-7. Only after explicit authorization, execute 2022-2024 discovery once.
-8. Close as pass/fail from the primary gate; do not inspect new variants.
-9. Keep 2025 closed until a separate post-discovery governance decision.
-10. Keep 2026 closed regardless of discovery outcome.
+4. Run an integrity/preflight review that does not read result-period OHLC.
+5. Only after explicit authorization, execute 2022-2024 discovery once.
+6. Close as pass/fail from the primary gate; do not inspect new variants.
+7. Keep 2025 closed until a separate post-discovery governance decision.
+8. Keep 2026 closed regardless of discovery outcome.
 
 ## 11. Conditions To Open Discovery
 
@@ -452,11 +456,12 @@ retrospective rescue; it does not erase the research record.
 
 ## Final Recommendation
 
-There is no legitimate hypothesis ready for immediate execution.
+There is no legitimate hypothesis ready for immediate historical execution.
 
 `HYP-DRIVE-PB-01` is closed as `discovery_failed` with
 `insufficient_event_frequency`; it is not promotable or reoptimizable under the
-same ID. `HYP-VWAP-DEV-01` is preregistered with methodology frozen, but it is
-not implemented or authorized for discovery. Its only next task is preparation
-of the implementation plan and implementation test contract. `HYP-CROSS`
-remains a later alternative, not a parallel workstream.
+same ID. `HYP-VWAP-DEV-01` is amended and frozen; its implementation plan and
+test contract are approved, and synthetic implementation is authorized but not
+started. Historical data and discovery remain blocked. Its only next task is
+`implement core methodology and synthetic tests`. `HYP-CROSS` remains a later
+alternative, not a parallel workstream.
