@@ -1,0 +1,473 @@
+schema_version: 1
+hypothesis_id: HYP-VWAP-DEV-01
+hypothesis_name: Causal Session VWAP Deviation Mean Reversion
+name: Causal Session VWAP Deviation Mean Reversion
+research_type: causal_event_study
+type: causal_event_study
+status: preregistered_not_executed
+design_status: human_approved
+conceptual_design_freeze_commit: 5a0c3dee3af99093fb5ff5eb2ab641767d1e086f
+clarification_id: HYP-VWAP-DEV-01-CLAR-01
+clarification_freeze_commit: 9d2bbf721c70da7a4b02df49d9973cffc77c09f6
+clarification_status: frozen
+clarification_classification: non_methodological_logical_clarification
+clarification_change_control:
+  selection_changed: false
+  timing_changed: false
+  threshold_changed: false
+  returns_changed: false
+  costs_changed: false
+  control_changed: false
+  bootstrap_changed: false
+  gate_thresholds_changed: false
+  temporal_partitions_changed: false
+  decision_variants_changed: false
+preregistration_status: frozen
+preregistration_created: true
+preregistration_frozen: true
+methodology_frozen: true
+human_approved: true
+implementation_allowed: false
+implementation_started: false
+discovery_executed: false
+validation_2025_unlocked: false
+validation_2025_executed: false
+historical_2026_decisional: false
+decision_variants: 1
+selection_data_used: false
+historical_returns_used: false
+historical_event_counts_used: false
+parameter_search_performed: false
+historical_threshold_comparison_performed: false
+approval:
+  human_review_performed: true
+  human_approved: true
+  approved_decisions: [B1, B2, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, B13, B14, B15]
+  blockers_remaining: 0
+  scope: preregistration_and_clarification
+configuration_governance:
+  single_source_of_truth: yaml_v1
+  config_requires_explicit_values: true
+  no_decisional_defaults: true
+  duplicate_keys_allowed: false
+  aliases_must_match: [hypothesis_name_equals_name, research_type_equals_type]
+design_decisions:
+  B1: {status: approved_by_human_review, yaml_path: mechanism}
+  B2: {status: approved_by_human_review, yaml_path: universe_and_data}
+  B3: {status: approved_by_human_review, yaml_path: causal_vwap}
+  B4: {status: approved_by_human_review, yaml_path: deviation}
+  B5: {status: approved_by_human_review, yaml_path: deviation.threshold}
+  B6: {status: approved_by_human_review, yaml_path: eligible_window}
+  B7: {status: approved_by_human_review_with_corrected_wording, yaml_path: event_formation}
+  B8: {status: approved_by_human_review_with_corrected_wording, yaml_path: execution}
+  B9: {status: approved_by_human_review_with_corrected_wording, yaml_path: deduplication}
+  B10: {status: approved_by_human_review, yaml_path: horizons}
+  B11: {status: approved_by_human_review, yaml_path: unconditional_control}
+  B12: {status: approved_by_human_review, yaml_path: costs}
+  B13: {status: approved_by_human_review, yaml_path: discovery_gate}
+  B14: {status: approved_by_human_review, yaml_path: temporal_splits}
+  B15: {status: approved_by_human_review, yaml_path: safety_flags}
+mechanism:
+  sole_executable_mechanism: mean_reversion_toward_causal_session_vwap
+  negative_signed_deviation_orientation: long
+  positive_signed_deviation_orientation: short
+  continuation_executable: false
+  long_only_variant: false
+  short_only_variant: false
+  volatility_normalized_variant: false
+universe_and_data:
+  symbols: [QQQ, SPY]
+  symbols_mandatory: true
+  asset_class: US_equity_ETF
+  source: approved_one_minute_RTH_equity_datasets
+  source_timeframe: 1min
+  research_timeframe: 5min
+  timezone: America/New_York
+  calendar: approved_US_equity_RTH
+  regular_session_open: "09:30"
+  excluded_observations: [premarket, after_hours, overnight, unapproved_sessions, incomplete_bars, outside_discovery]
+  real_ohlc_read_during_preregistration: false
+  real_manifests_read_during_preregistration: false
+causal_resample:
+  source_to_research: 1min_to_5min
+  aggregation:
+    open: first_source_open
+    high: maximum_source_high
+    low: minimum_source_low
+    close: last_source_close
+    volume: sum_source_volume
+  required_source_bars_per_research_bar: 5
+  source_bars_must_be_complete_contiguous_and_same_session: true
+  research_bar_interval: left_closed_right_open
+  research_bar_open_timestamp: interval_start
+  decision_available_timestamp: interval_end_close
+  information_after_bar_close_used: false
+  early_closes_from_approved_calendar: true
+  incomplete_or_gapped_research_bar: reject_bar_and_any_dependent_event
+  cross_session_resample: prohibited
+causal_vwap:
+  typical_price_formula: (high_t+low_t+close_t)/3
+  numerator_formula: cumulative_sum(typical_price_i*volume_i)
+  denominator_formula: cumulative_sum(volume_i)
+  completed_bar_range: approved_session_open_through_t_inclusive
+  current_completed_bar_included: true
+  reset_each_approved_session: true
+  completed_bar_information_only: true
+  future_price_or_volume_used: false
+  zero_volume_policy:
+    cumulative_volume_zero: vwap_undefined
+    undefined_vwap_can_create_or_confirm_event: false
+    individual_zero_volume_increment: zero_numerator_and_denominator
+    prior_cumulative_volume_positive: vwap_remains_defined_and_unchanged
+    cross_session_forward_fill: false
+    synthetic_volume_imputation: false
+    replace_volume_with_one: false
+deviation:
+  formula: close_t/session_vwap_t-1
+  unit: proportion
+  negative_value_location: below_vwap
+  positive_value_location: above_vwap
+  threshold:
+    tau: 0.005
+    percent: 0.50
+    long_breach_operator: "<"
+    long_breach_value: -0.005
+    short_breach_operator: ">"
+    short_breach_value: 0.005
+    equality_is_breach: false
+    strict: true
+    symmetric: true
+    unique: true
+    identical_for_symbols: [QQQ, SPY]
+    fixed_ex_ante: true
+    optimized: false
+    independent_of: [ATR, RSI, rolling_volatility, standard_deviation_bands]
+eligible_window:
+  timestamp_basis: completed_5min_bar_close_America_New_York
+  session_close_source: approved_calendar_for_specific_session
+  earliest_breach_close: "10:00"
+  earliest_boundary_inclusive: true
+  latest_breach_close_formula: session_close_minus_65_minutes
+  latest_boundary_inclusive: true
+  confirmation_close_formula: breach_close_timestamp_plus_5_minutes
+  executable_timestamp_formula: confirmation_close_timestamp
+  latest_executable_timestamp_formula: session_close_minus_60_minutes
+  latest_execution_boundary_inclusive: true
+  regular_session_example:
+    session_close: "16:00"
+    earliest_breach_close: "10:00"
+    earliest_confirmation_close: "10:05"
+    earliest_execution: "10:05"
+    latest_breach_close: "14:55"
+    latest_confirmation_close: "15:00"
+    latest_execution: "15:00"
+  early_close_policy:
+    dynamic_from_approved_session_close: true
+    fixed_early_close_hardcoded: false
+    example_session_close: "13:00"
+    example_latest_breach_close: "11:55"
+    example_latest_confirmation_close: "12:00"
+    example_latest_execution: "12:00"
+  insufficient_time_for_complete_event_and_all_horizons: no_eligible_event
+event_formation:
+  candidate_policy: first_strict_eligible_breach_only
+  orientation_fixed_at_breach: true
+  confirmation_bar: immediately_following_contiguous_completed_5min_bar_only
+  confirmation_requirements:
+    same_deviation_sign_as_breach: true
+    same_strict_side_of_own_causal_vwap: true
+    absolute_deviation_operator: "<"
+    absolute_deviation_reference: breach_absolute_deviation
+    more_extreme_close_away_from_vwap_allowed: false
+    complete_and_causal_states_required: true
+  confirmation_formula: sign(deviation_confirmation)=sign(deviation_breach) and abs(deviation_confirmation)<abs(deviation_breach)
+  immediate_confirmation_failure: invalidate_entire_symbol_session
+  later_breach_allowed: false
+  later_confirmation_allowed: false
+  opposite_side_replacement_allowed: false
+  reset_allowed: false
+  cooldown: none
+  reentry_allowed: false
+execution:
+  confirmation_timestamp: close_of_immediate_confirmation_bar
+  executable_timestamp: open_of_immediately_following_5min_bar
+  contiguous_timestamp_identity: executable_timestamp_equals_confirmation_close_timestamp
+  executable_price: execution_bar_open
+  executable_vwap: latest_causal_vwap_from_completed_bars_before_execution_open
+  execution_bar_contributes_before_open: false
+  pre_execution_cancellation:
+    long: executable_price_greater_than_or_equal_to_executable_vwap
+    short: executable_price_less_than_or_equal_to_executable_vwap
+    equality_cancels: true
+    canceled_event_recorded_as_execution: false
+    rescan_after_cancel: false
+    replacement_after_cancel: false
+deduplication:
+  maximum_candidate_breaches_per_symbol_session: 1
+  maximum_confirmed_events_per_symbol_session: 1
+  overlapping_events_within_symbol_session: false
+  cooldown: none
+  reset: false
+  second_attempt: false
+  opposite_signal_substitute: false
+horizons:
+  origin_timestamp: executable_timestamp
+  origin_price: executable_price
+  primary: 30min
+  secondary: [15min, 60min, session_close]
+  secondary_decisional: false
+  secondary_can_rescue_primary: false
+  cross_session_close_allowed: false
+  every_confirmed_event_requires_all_horizons_available_and_path_complete: true
+returns_and_path_metrics:
+  favorable_orientation_positive: true
+  gross_event_return:
+    long: future_price/executable_price-1
+    short: executable_price/future_price-1
+  MFE:
+    long: max(path_high/executable_price-1)
+    short: max(executable_price/path_low-1)
+    interval: executable_timestamp_through_horizon
+  MAE:
+    long: min(path_low/executable_price-1)
+    short: min(executable_price/path_high-1)
+    interval: executable_timestamp_through_horizon
+  baseline_net_return: gross_event_return-baseline_round_trip_cost
+  stress_net_return: gross_event_return-stress_round_trip_cost
+  unconditional_return: arithmetic_mean_of_matched_oriented_control_returns
+  incremental_return: gross_event_return-unconditional_return
+unconditional_control:
+  type: exact_time_unconditional
+  matched_by: [symbol, calendar_year, executable_HH_MM_exact_5min, horizon]
+  exclude_event_session_date: true
+  event_orientation_applied: true
+  outside_discovery_allowed: false
+  equal_timestamp_weights: true
+  selection_filters_prohibited: [deviation, future_return, regime, gap, volume, event_status]
+  empty_nonfinite_or_nonestimable: fail_event_and_required_gate
+  substitution_by_other_time_year_or_symbol: false
+costs:
+  classification: inherited_project_convention
+  optimized: false
+  baseline_round_trip:
+    formula: 0.0002+0.02/executable_price
+    commission_component: 0.0002
+    absolute_slippage_component: 0.02
+  stress_round_trip:
+    formula: 0.0004+0.04/executable_price
+    commission_component: 0.0004
+    absolute_slippage_component: 0.04
+temporal_splits:
+  discovery: {start: "2022-01-01", end: "2024-12-31", executed: false}
+  validation_2025: {start: "2025-01-01", end: "2025-12-31", unlocked: false, executed: false, unlock_rule: PRO-01_only}
+  historical_2026: {decisional: false, executed: false, prohibited_uses: [selection, tuning, gate_design, promotion, variant_comparison]}
+bootstrap:
+  confidence_level: 0.95
+  method: percentile
+  replicates: 10000
+  seed: 20260802
+  cluster_unit: session_date
+  same_date_symbols_together: true
+  resample_clusters_with_replacement: true
+  replicate_cluster_count: same_as_original_sample
+  statistic: pooled_mean_recomputed_each_replicate
+  bilateral_lower_percentile: 2.5
+  bilateral_upper_percentile: 97.5
+  decisional_metrics: [pooled_gross_mean, pooled_incremental_mean, pooled_baseline_net_mean]
+  strict_positive_lower_bounds: true
+  stress_net_bootstrap_decisional: false
+  fewer_than_two_clusters: fail
+  nonfinite_or_nonestimable: fail
+  independent_row_resampling: prohibited
+annual_stability:
+  required_years: [2022, 2023, 2024]
+  minimum_events_each_year: 40
+  minimum_positive_gross_mean_years: 2
+  minimum_positive_incremental_mean_years: 2
+  positive_operator: ">"
+  positive_threshold: 0
+  missing_insufficient_or_nonfinite_year: fail
+  zero_or_negative_mean: not_positive
+concentration:
+  annual_contribution: sum_incremental_return_by_year
+  formula: max(abs(C_y))/sum(abs(C_y))
+  maximum: 0.70
+  required_years: [2022, 2023, 2024]
+  zero_denominator: fail
+  missing_or_nonfinite: fail
+  leave_one_largest_session_out:
+    session_contribution: sum_incremental_return_by_session_date_all_symbols
+    removed_unit: complete_session_date
+    selection: maximum_absolute_total_incremental_contribution
+    remove_only_one_symbol_or_row: false
+    annual_concentration_maximum: 0.70
+    pooled_incremental_mean_operator: ">"
+    pooled_incremental_mean_threshold: 0
+    minimum_positive_incremental_years: 2
+    minimum_events_each_year_reapplied: 40
+    one_remaining_observation_or_cluster: fail
+    missing_zero_denominator_insufficient_nonfinite_or_nonestimable: fail
+missing_data_policy:
+  required_false_missing_nonfinite_insufficient_or_nonestimable: fail
+  silent_omission: prohibited
+  descriptive_reporting_after_gate_failure: allowed_without_promotion
+discovery_gate:
+  type: all_required
+  primary_horizon: 30min
+  secondary_horizons_cannot_override_primary_fail: true
+  caller_supplied_boolean_criteria_authoritative: false
+  substantive_required_criterion_ids:
+    - INT-01
+    - INT-02
+    - INT-03
+    - INT-04
+    - INT-05
+    - INT-06
+    - INT-07
+    - INT-08
+    - SMP-01
+    - SMP-02
+    - SMP-03
+    - REP-01
+    - ECO-01
+    - ECO-02
+    - ECO-03
+    - ECO-04
+    - ECO-05
+    - INC-01
+    - UNC-01
+    - STB-01
+    - STB-02
+    - CON-01
+    - CON-02
+    - CON-03
+    - CON-04
+  criteria:
+    - {criterion_id: INT-01, category: integrity, scope: global, metric: causal_integrity_passed, operator: "=", threshold: true, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: A/B, justification: causal_event_integrity, inherited_or_new: inherited}
+    - {criterion_id: INT-02, category: integrity, scope: global, metric: dataset_contract_passed, operator: "=", threshold: true, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: A, justification: approved_dataset_contract, inherited_or_new: inherited}
+    - {criterion_id: INT-03, category: integrity, scope: global, metric: manifest_validation_passed, operator: "=", threshold: true, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: A, justification: manifest_traceability, inherited_or_new: inherited}
+    - {criterion_id: INT-04, category: integrity, scope: global, metric: lookahead_violations, operator: "=", threshold: 0, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: B, justification: causal_boundary, inherited_or_new: inherited}
+    - {criterion_id: INT-05, category: integrity, scope: global, metric: unresolved_data_quality_failures, operator: "=", threshold: 0, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: A, justification: complete_data_quality, inherited_or_new: inherited}
+    - {criterion_id: INT-06, category: integrity, scope: global, metric: 2025_or_2026_contamination, operator: "=", threshold: false, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: A, justification: temporal_partition, inherited_or_new: inherited}
+    - {criterion_id: INT-07, category: integrity, scope: every_confirmed_event, metric: required_horizons_available_and_path_complete, operator: "=", threshold: true, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: B, justification: complete_causal_paths, inherited_or_new: new}
+    - {criterion_id: INT-08, category: integrity, scope: global, metric: decision_variants, operator: "=", threshold: 1, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: A, justification: multiplicity_control, inherited_or_new: inherited}
+    - {criterion_id: SMP-01, category: sample, scope: pooled, metric: event_count, operator: ">=", threshold: 150, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: A/D, justification: minimum_precision, inherited_or_new: inherited}
+    - {criterion_id: SMP-02, category: sample, scope: each_QQQ_and_SPY, metric: event_count, operator: ">=", threshold: 50, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: A/D, justification: symbol_representation, inherited_or_new: inherited}
+    - {criterion_id: SMP-03, category: sample, scope: each_2022_2023_2024, metric: event_count, operator: ">=", threshold: 40, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: D, justification: annual_representation, inherited_or_new: new}
+    - {criterion_id: REP-01, category: representation, scope: each_long_and_short, metric: event_count, operator: ">=", threshold: 40, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: D, justification: symmetric_orientation_representation, inherited_or_new: new}
+    - {criterion_id: ECO-01, category: economy, scope: pooled, metric: gross_mean_30min, operator: ">", threshold: 0, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: C, justification: favorable_primary_effect, inherited_or_new: inherited}
+    - {criterion_id: ECO-02, category: economy, scope: each_QQQ_and_SPY, metric: gross_mean_30min, operator: ">", threshold: 0, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: C/D, justification: no_pooled_masking, inherited_or_new: inherited}
+    - {criterion_id: ECO-03, category: economy, scope: each_long_and_short, metric: gross_mean_and_median_30min, operator: ">", threshold: 0, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: C/D, justification: bilateral_consistency, inherited_or_new: inherited}
+    - {criterion_id: ECO-04, category: economy, scope: pooled_and_each_symbol, metric: baseline_net_mean_30min, operator: ">", threshold: 0, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: C, justification: exceeds_inherited_baseline_cost, inherited_or_new: expanded}
+    - {criterion_id: ECO-05, category: economy, scope: pooled, metric: stress_net_mean_30min, operator: ">=", threshold: 0, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: C, justification: adverse_cost_robustness, inherited_or_new: inherited}
+    - {criterion_id: INC-01, category: incremental, scope: pooled, metric: incremental_mean_30min, operator: ">", threshold: 0, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: C/D, justification: value_over_exact_time_control, inherited_or_new: inherited}
+    - {criterion_id: UNC-01, category: uncertainty, scope: pooled, metric: gross_incremental_baseline_95pct_lower_bounds, operator: ">", threshold: 0, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: A/D, justification: session_clustered_uncertainty, inherited_or_new: inherited}
+    - {criterion_id: STB-01, category: stability, scope: "2022_2024", metric: years_with_positive_gross_mean_30min, operator: ">=", threshold: 2, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: A/D, justification: annual_persistence, inherited_or_new: inherited}
+    - {criterion_id: STB-02, category: stability, scope: "2022_2024", metric: years_with_positive_incremental_mean_30min, operator: ">=", threshold: 2, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: D, justification: incremental_persistence, inherited_or_new: new}
+    - {criterion_id: CON-01, category: concentration, scope: annual, metric: max_abs_annual_incremental_share, operator: "<=", threshold: 0.70, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: A/D, justification: no_annual_dominance, inherited_or_new: inherited}
+    - {criterion_id: CON-02, category: concentration, scope: leave_largest_session_out, metric: max_abs_annual_incremental_share, operator: "<=", threshold: 0.70, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: A/D, justification: session_influence_robustness, inherited_or_new: inherited}
+    - {criterion_id: CON-03, category: concentration, scope: leave_largest_session_out, metric: pooled_incremental_mean_30min, operator: ">", threshold: 0, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: D, justification: effect_survives_largest_session, inherited_or_new: new}
+    - {criterion_id: CON-04, category: concentration, scope: leave_largest_session_out, metric: positive_incremental_years_with_minimum_40, operator: ">=", threshold: 2, required: true, missing_data_policy: FAIL, failure_classification: discovery_failed, justification_type: A/D, justification: residual_annual_stability, inherited_or_new: expanded}
+    - criterion_id: PRO-01
+      category: promotion
+      scope: global
+      metric: all_substantive_required_criteria_passed
+      operator: "="
+      threshold: true
+      required: true
+      evaluation_order: after_all_substantive_criteria
+      input_criterion_ids:
+        - INT-01
+        - INT-02
+        - INT-03
+        - INT-04
+        - INT-05
+        - INT-06
+        - INT-07
+        - INT-08
+        - SMP-01
+        - SMP-02
+        - SMP-03
+        - REP-01
+        - ECO-01
+        - ECO-02
+        - ECO-03
+        - ECO-04
+        - ECO-05
+        - INC-01
+        - UNC-01
+        - STB-01
+        - STB-02
+        - CON-01
+        - CON-02
+        - CON-03
+        - CON-04
+      self_inclusion: false
+      direct_or_indirect_self_inclusion_allowed: false
+      terminal_pass_status: passed
+      failing_statuses: [failed, "false", missing, non-finite, insufficient, non-estimable, unavailable]
+      deterministic_promotion_aggregation: true
+      additional_economic_statistical_selection_or_timing_threshold: false
+      missing_data_policy: fail
+      failure_classification: discovery_failed
+      justification_type: A
+      justification: sole_validation_unlock_condition
+      inherited_or_new: inherited
+  gate_passed: PRO-01
+  validation_2025_unlocked_when: PRO-01=true
+  pass_classification: discovery_passed
+  failure_classification: discovery_failed
+  pass_validation_2025_unlocked: true
+  fail_validation_2025_unlocked: false
+  discretionary_promotion_status_allowed: false
+  paper_eligible_on_pass: false
+  live_eligible_on_pass: false
+  strategy_created_on_pass: false
+  position_sizing_used_on_pass: false
+  orders_created_on_pass: false
+multiplicity:
+  decision_variants: 1
+  formal_correction: none
+  corrected_significance_claim: false
+current_state:
+  preregistration_created: true
+  preregistration_frozen: true
+  methodology_frozen: true
+  implementation_allowed: false
+  implementation_started: false
+  discovery_executed: false
+  validation_2025_unlocked: false
+  validation_2025_executed: false
+  historical_2026_decisional: false
+  paper_eligible: false
+  live_eligible: false
+safety_flags:
+  strategy_created: false
+  position_sizing_used: false
+  orders_created: false
+  orders_sent: false
+  broker_connected: false
+  paper_broker_enabled: false
+  paper_eligible: false
+  live_trading: false
+  live_eligible: false
+forbidden_actions:
+  - implement_before_preregistration_freeze
+  - read_real_ohlc_during_preregistration
+  - read_real_manifests_during_preregistration
+  - execute_discovery
+  - execute_validation_2025
+  - use_historical_2026_decisionally
+  - create_strategy
+  - position_sizing
+  - create_orders
+  - connect_broker
+canonical_payload:
+  serialization: UTF-8 canonical JSON
+  ensure_ascii: true
+  sorted_keys: true
+  separators: [",", ":"]
+  all_yaml_fields_included_except_declared_exclusions: true
+  declared_integrity_metadata: [canonical_payload_sha256]
+  explicitly_non_methodological_excluded: [generated_at, generation_timestamp, absolute_path, user, hostname, working_tree, future_execution_sha, preregistration_commit, results, historical_counts, run_derived_data]
+canonical_payload_sha256: 7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c
