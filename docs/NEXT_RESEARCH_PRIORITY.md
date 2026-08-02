@@ -13,9 +13,10 @@ Current governance decision:
 - `HYP-DRIVE-PB-01` is closed as `discovery_failed` with
   `dominant_failure_reason=insufficient_event_frequency`;
 - it is not promotable and cannot be reoptimized under the same ID;
-- the sole next conceptual-design priority is `HYP-VWAP-DEV-01`;
-- `HYP-VWAP-DEV-01` is `draft_for_human_review` with partial human approval,
-  not preregistered, not implemented, and has not opened discovery;
+- the sole next preregistration-drafting priority is `HYP-VWAP-DEV-01`;
+- `HYP-VWAP-DEV-01` is `conceptual_design_human_approved` and
+  `ready_for_preregistration`, but remains not preregistered, not implemented,
+  and has not opened discovery;
 - `HYP-CROSS` remains a later alternative and must not be developed in
   parallel.
 
@@ -135,7 +136,7 @@ apply.
 | HYP-FCR-EVENT-01 | yes | yes | completed | blocked | blocked | stable_but_not_economic | no/no | F - diagnostic record only |
 | HYP-OR-CONT-EVENT-01 | yes | yes | failed | 2025 locked | 2026 not executed | causal continuation failed | no/no | F - no short rescue |
 | HYP-DRIVE-PB-01 | yes | yes | 2022-2024 failed; 3 events | 2025 locked; not opened | 2026 not executed | discovery_failed; insufficient_event_frequency | no/no | F - preserve only; no reoptimization |
-| HYP-VWAP-DEV-01 | no; design draft only | no | not opened | 2025 locked; not opened | 2026 non-decisional | draft_for_human_review; 3 blockers | no/no | B - resolve B5/B6/B13; do not preregister yet |
+| HYP-VWAP-DEV-01 | human-approved conceptual design; preregistration pending | no | not opened | 2025 locked; not opened | 2026 non-decisional | conceptual_design_human_approved; ready_for_preregistration | no/no | B - draft the preregistration; implementation prohibited |
 | HYP-CROSS | partial protocol | no | not opened | not opened | closed | overlaps HYP-REL-01 | no/no | E - new motivation required |
 | Five legacy crypto strategies | no formal registry | yes | train/OOS observed | embedded OOS | data through 2026 observed | rejected | no/no | F - do not retune |
 | Two legacy equity OR/FVG strategies | no formal registry | yes | full/OOS observed | embedded OOS | 2026 observed | rejected | no/no | F - OR/FVG branch closed |
@@ -236,7 +237,7 @@ not literal duplicate IDs.
 | --- | --- | --- |
 | Any immediate historical run | A: none | No candidate has both a complete current preregistration and sufficient independence. |
 | HYP-DRIVE-PB-01 | F | Discovery closed with 3 events and `insufficient_event_frequency`; preserve without reoptimization. |
-| HYP-VWAP-DEV-01 | B | Partial human review completed; B5, B6, and B13 require resolution before preregistration. |
+| HYP-VWAP-DEV-01 | B | Conceptual design human-approved with no blockers; next authorized task is preregistration drafting only. |
 | FCR/GAP/REL config-state reconciliation | C | Artifacts and docs contradict preparation status fields; hashes must be preserved. |
 | Ten funding/OI ideas | D | Zero symbols with approved historical funding/OI data; no result can be inferred. |
 | HYP-CROSS | E | Substantially overlaps failed HYP-REL-01 and needs a new causal distinction or external motivation. |
@@ -288,33 +289,36 @@ whether an ex-ante-defined deviation from causal RTH session VWAP predicts a
 
 Current state:
 
-- `design_status=draft_for_human_review`;
+- `design_status=conceptual_design_human_approved`;
 - `human_review_performed=true`;
-- `human_approved=false`;
-- exactly three decisions remain blocked: B5, B6, and B13;
+- `human_approved=true`;
+- `ready_for_preregistration=true`;
+- `methodology_frozen=false`;
+- `implementation_allowed=false`;
+- `implementation_status=not_implemented`;
+- `discovery_status=discovery_not_opened`;
+- `blockers_remaining=0`;
 - not preregistered;
-- not implemented;
-- discovery not executed;
 - 2025 locked;
 - historical 2026 non-decisional.
 
-Mean reversion is approved as the sole mechanism; continuation is prohibited.
-The approval was made without comparing historical performance between the two
-mechanisms.
+The approved one-variant design is mean reversion toward causal session VWAP
+for mandatory QQQ and SPY causal five-minute bars. Selection uses signed
+percentage deviation with strict symmetric `tau=0.005`: negative deviation is
+long-oriented and positive deviation is short-oriented.
 
-It also requires category B work before execution. The preregistration must:
+The first eligible breach close is 10:00. Breaches remain eligible through
+`session_close-65 minutes`; only the immediate next bar may confirm; execution
+is at the following bar open and no later than `session_close-60 minutes`.
+There is at most one candidate per symbol-session. The sole primary horizon is
+30 minutes, and the approved discovery gate is all-required. Secondary
+horizons cannot rescue a primary failure.
 
-- resolve one strict symmetric percentage-deviation threshold and its ex-ante
-  source (B5);
-- resolve the bounded eligible intraday window and early-close policy (B6);
-- use the first strict breach, immediate next-bar confirmation, next-bar-open
-  causal execution, and one candidate per symbol-session;
-- retain 30 minutes as the sole primary horizon;
-- resolve and freeze the complete all-required gate (B13);
-- explain why it is not the rejected generic crypto VWAP Pullback strategy;
-- avoid gap/OR/FVG filters;
-- preserve the approved symbol, temporal partition, control, cost, and safety
-  decisions before any historical execution.
+The next authorized task is to draft the exact preregistration. The conceptual
+approval does not freeze methodology or authorize implementation, discovery,
+historical access, strategy construction, or paper/live activity. The
+preregistration must preserve the approved design without introducing
+additional variants or discretionary decisions.
 
 The design must explain why it is not the rejected generic crypto VWAP
 Pullback, Extreme Mean Reversion, or prior two-ATR/RSI VWAP-deviation strategy.
@@ -340,15 +344,15 @@ parallel.
 
 ## 10. Research Sequence
 
-1. Resolve B5, B6, and B13 in
-   `docs/HYP_VWAP_DEV_01_DESIGN_DECISIONS.md` without opening historical
-   outcomes.
-2. Record full human approval or rejection of the completed one-variant design
-   for `HYP-VWAP-DEV-01`.
+1. Draft the exact one-variant preregistration for `HYP-VWAP-DEV-01` from the
+   human-approved conceptual design, without implementation or historical
+   access.
+2. Independently review the preregistration for exact preservation of B1-B15
+   and absence of unresolved ambiguity.
 3. Perform a ledger migration plan for missing rows and stale statuses without
    modifying frozen payloads or hashes.
-4. Only after human approval, write the exact one-variant preregistration and
-   documentary tests.
+4. Only after preregistration approval, prepare its documentary tests and
+   canonical configuration under separate authorization.
 5. Freeze config, costs, primary horizon, control, gate, report schema, and
    canonical hash in a dedicated commit.
 6. Run an integrity/preflight review that does not read result-period OHLC.
@@ -442,6 +446,7 @@ There is no legitimate hypothesis ready for immediate execution.
 
 `HYP-DRIVE-PB-01` is closed as `discovery_failed` with
 `insufficient_event_frequency`; it is not promotable or reoptimizable under the
-same ID. The sole next priority is resolution of B5, B6, and B13 for
-`HYP-VWAP-DEV-01`. It is not preregistered, not implemented, and has not opened
-discovery. `HYP-CROSS` remains a later alternative, not a parallel workstream.
+same ID. `HYP-VWAP-DEV-01` has a human-approved conceptual design and is ready
+for preregistration drafting. It is not preregistered, frozen, implemented, or
+authorized for discovery. `HYP-CROSS` remains a later alternative, not a
+parallel workstream.

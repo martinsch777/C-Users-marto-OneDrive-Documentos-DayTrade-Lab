@@ -2,29 +2,32 @@
 
 ```text
 hypothesis_id: HYP-VWAP-DEV-01
-design_status: draft_for_human_review
+design_status: human_approved_ready_for_preregistration
 human_review_performed: true
-human_approved: false
+human_approved: true
 methodology_frozen: false
-ready_for_preregistration: false
+ready_for_preregistration: true
 implementation_started: false
 implementation_allowed: false
 historical_discovery_opened: false
 validation_2025_unlocked: false
 historical_2026_decisional: false
 decision_variants: 1
+blockers_remaining: 0
 ```
 
 ## Document Purpose
 
-This document is a conceptual decision draft. It is not a preregistration,
-configuration, implementation specification, or authorization to inspect
-historical outcomes. Only B5, B6, and B13 remain pending human approval.
+This document is a human-approved conceptual design. It is not a
+preregistration, configuration, implementation specification, methodology
+freeze, or authorization to inspect historical outcomes. All B1-B15 decisions
+are approved and no conceptual blocker remains.
 
-Human review partially approved the design. B1-B4, B7-B12, B14, and B15 are
-approved. Full design approval remains withheld because B5, B6, and B13 are
-still blocked. Approval of individual decisions does not authorize
-preregistration or implementation.
+`human_approved=true` records approval of the conceptual design.
+`methodology_frozen=false` remains because no conceptual-design freeze commit
+exists. `ready_for_preregistration=true` authorizes drafting the
+preregistration only. Implementation remains prohibited until the complete
+preregistration and any required clarifications are reviewed and frozen.
 
 The objective is one independent, causal equity event study. It must not relax
 or rename HYP-DRIVE-PB-01, and it must not reproduce a previously rejected
@@ -71,9 +74,9 @@ not freeze scaling, timestamp, threshold, confirmation, gate, or orientation.
 No `HYP-VWAP-DEV-01` YAML, preregistration, source module, runner, test, or
 artifact exists. There is no duplicate implementation under that ID.
 
-Decisions still absent include the mechanism, deviation unit, exact threshold,
-eligible time window, confirmation rule, event timing, deduplication, primary
-horizon, gate thresholds, and human approval.
+Those previously absent decisions are now resolved in B1-B15. They remain
+unfrozen and must be translated without alteration into a reviewed
+preregistration before implementation can be considered.
 
 ### Conflict Controls
 
@@ -124,15 +127,15 @@ two-ATR threshold.
 | B2 | true | false | approved_by_human_review | false | QQQ and SPY; causal 5-minute RTH bars in America/New_York |
 | B3 | true | false | approved_by_human_review | false | Cumulative causal typical-price session VWAP including the current completed bar |
 | B4 | true | false | approved_by_human_review | false | Signed percentage deviation only |
-| B5 | false | true | blocked | false | One strict symmetric threshold; numeric value and ex-ante source pending |
-| B6 | false | true | blocked | false | Bounded eligible intraday window; exact bounds and early-close policy pending |
+| B5 | true | false | approved_by_human_review | false | Strict symmetric percentage threshold `tau=0.005` |
+| B6 | true | false | approved_by_human_review | false | Breach close 10:00 through session close minus 65 minutes; execution through close minus 60 minutes |
 | B7 | true | false | approved_by_human_review_with_corrected_wording | false | First breach and immediate next-bar confirmation contract |
 | B8 | true | false | approved_by_human_review_with_corrected_wording | false | Next-bar-open causal execution with pre-execution crossing cancellation |
 | B9 | true | false | approved_by_human_review_with_corrected_wording | false | One candidate per symbol-session; no rescanning or replacement signal |
 | B10 | true | false | approved_by_human_review | false | 30-minute primary; 15-minute, 60-minute, and session-close secondary horizons |
 | B11 | true | false | approved_by_human_review | false | Exact-time matched unconditional control |
 | B12 | true | false | approved_by_human_review | false | Inherited baseline and stress costs |
-| B13 | false | true | blocked | false | Complete hypothesis-specific all-required gate pending |
+| B13 | true | false | approved_by_human_review | false | Complete balanced all-required discovery gate |
 | B14 | true | false | approved_by_human_review | false | Discovery 2022-2024; 2025 locked; historical 2026 non-decisional |
 | B15 | true | false | approved_by_human_review | false | Causal event study only; permanent safety state |
 
@@ -177,9 +180,18 @@ for completed bars i from the 09:30 session open through bar t
 - Reset all cumulative state at every approved session.
 - Only completed-bar information may enter the calculation.
 - No future bar, future volume, or future price may be used.
-- A zero-volume bar contributes zero numerator and denominator increment.
-- If cumulative session volume is zero, VWAP is unavailable and no event may
-  exist.
+- If cumulative session volume through completed bar `t` is zero,
+  `session_vwap_t` is undefined and that bar cannot create or confirm an event.
+- Once cumulative session volume is strictly positive, VWAP is computed
+  normally.
+- A completed bar with zero individual volume contributes zero to the
+  cumulative numerator and denominator. If prior cumulative volume is
+  positive, session VWAP remains defined and unchanged by that bar.
+- Forward filling from another session is prohibited. Volume must not be
+  replaced by one or by synthetic imputation.
+
+This is a technical causal clarification, not a new mechanism, threshold, or
+decision variant.
 
 ### B4-B5: Deviation And Threshold
 
@@ -193,51 +205,88 @@ Negative values indicate price below VWAP. Positive values indicate price above
 VWAP. ATR, RSI, rolling volatility, and standard-deviation bands are not
 executable alternatives in HYP-VWAP-DEV-01.
 
-B5 remains blocked. The pending selection boundary is:
-
-Use one symmetric strict boundary:
+B5 is approved with one symmetric strict boundary:
 
 ```text
-abs(deviation_t) > tau
+tau = 0.005
+
+long-oriented candidate: signed_deviation_t < -0.005
+short-oriented candidate: signed_deviation_t > 0.005
 ```
 
-`tau` has no numeric value or approved ex-ante source. The boundary must remain
-strict and symmetric for long/short orientations. No historical frequency or
-return may inform it.
+Equality at either boundary is not a breach. The threshold is strict,
+symmetric, percentage-based, unique, fixed ex ante, identical for QQQ and SPY,
+and independent of ATR, RSI, rolling volatility, and standard-deviation bands.
+It was not optimized against historical event counts or returns.
+
+`tau=0.005` is a round, interpretable 0.50% displacement from causal session
+VWAP. Its magnitude is economically material relative to the inherited
+round-trip cost conventions. This does not imply that recoverable mean
+reversion will exceed costs or assert profitability. No internal literature
+establishes a uniquely correct threshold; this is an ex-ante economic design
+decision, not an empirical calibration.
 
 ```text
-approved: false
-requires_human_approval: true
-resolution_status: blocked
+approved: true
+requires_human_approval: false
+resolution_status: approved_by_human_review
 implementation_allowed: false
-historical_frequency_used: false
+justification_type: C
+inherited_or_new: new
+historical_calibration_used: false
+selection_data_used: false
 historical_returns_used: false
-parameter_optimization_performed: false
+historical_event_counts_used: false
+parameter_search_performed: false
+historical_threshold_comparison_performed: false
 ```
 
 ### B6-B7: Window And Formation
 
-#### B6: Blocked Eligible Window
+#### B6: Approved Eligible Window
 
-The eligible interval is bounded within RTH. These items remain pending:
-
-- earliest eligible breach time;
-- latest eligible executable time;
-- exact early-close policy.
-
-The already agreed constraint is:
+`session_open` and `session_close` come from the approved US equity calendar
+for the specific session. Eligible boundaries use completed-bar close
+timestamps in `America/New_York`:
 
 ```text
-executable_timestamp + primary_horizon <= session_close
+10:00 <= breach_close_timestamp <= session_close - 65 minutes
+confirmation_close_timestamp = breach_close_timestamp + 5 minutes
+executable_timestamp = confirmation_close_timestamp
+executable_timestamp <= session_close - 60 minutes
 ```
 
-No eligible time may be chosen from historical event counts or returns.
+The first eligible breach close is 10:00. The immediately following contiguous
+five-minute bar is the only confirmation bar. Execution is at the open of the
+five-minute bar immediately following confirmation; for contiguous bars, that
+instant equals `confirmation_close_timestamp`. All permitted boundaries are
+inclusive.
+
+For a regular 16:00 close, the earliest breach, confirmation, and execution are
+10:00, 10:05, and 10:05; the latest are 14:55, 15:00, and 15:00. For an early
+13:00 close, the latest are 11:55, 12:00, and 12:00. No early-close hour may be
+hard-coded independently of the approved calendar.
+
+If the session cannot support the eligible breach, immediate confirmation,
+execution open, and complete 15-minute, 30-minute, 60-minute, and session-close
+horizons, the symbol-session has no eligible event. The 10:00 start excludes
+the immediate opening interval and allows causal session VWAP to accumulate.
+The close-minus-60-minute execution cutoff guarantees every fixed horizon.
+No event-frequency or return data informed the window.
 
 ```text
-approved: false
-requires_human_approval: true
-resolution_status: blocked
+approved: true
+requires_human_approval: false
+resolution_status: approved_by_human_review
 implementation_allowed: false
+justification_type: B/C
+inherited_or_new: new
+historical_calibration_used: false
+selection_data_used: false
+historical_returns_used: false
+historical_event_counts_used: false
+parameter_search_performed: false
+historical_threshold_comparison_performed: false
 ```
 
 #### B7-B9: Approved Integrated Causal Contract
@@ -289,7 +338,7 @@ short-oriented candidate: cancel when executable_price <= executable_vwap
 12. Equality with VWAP counts as a completed crossing and cancels the event.
 13. A canceled execution does not permit rescanning or another event during the
     same symbol-session.
-14. The eligible window and threshold remain governed by unresolved B5 and B6.
+14. The eligible window and threshold are the approved B5 and B6 rules above.
 
 ```text
 B7_resolution_status: approved_by_human_review_with_corrected_wording
@@ -321,6 +370,9 @@ For each event and horizon, the unconditional control matches:
 Control returns use the same long/short orientation as the event. Controls
 outside discovery are prohibited. Use equal timestamp weights. Do not select
 controls using deviation, future return, regime, gap, volume, or event status.
+An exact-time control that is empty, non-finite, or non-estimable fails the
+event and therefore the required gate. A different time, year, or symbol must
+not be substituted.
 
 ### B12: Costs
 
@@ -334,36 +386,157 @@ stress_cost = 0.0004 + 0.04 / executable_price
 These are project conventions inherited ex ante and are not optimized
 parameters of HYP-VWAP-DEV-01.
 
-### B13: Proposed Gate Dimensions
-
-B13 remains blocked. The eventual all-required gate must define:
-
-- minimum pooled sample and minimum sample for each mandatory symbol;
-- adequate representation of both deviation orientations, or an explicit
-  preregistered rule for handling an absent orientation;
-- positive oriented gross mean and median;
-- positive incremental mean versus the matched control;
-- positive baseline-net mean and non-negative stress-net mean;
-- consistent expected sign across QQQ and SPY;
-- expected sign in a preregistered number of discovery years;
-- session-clustered bootstrap intervals;
-- annual and leave-one-session-out concentration;
-- causal, calendar, manifest, timestamp, and contamination integrity;
-- one-variant compliance.
-
-Numeric minimum samples, annual thresholds, concentration limits, bootstrap
-method/seed/resamples, and exact pass logic are unresolved. They must not be
-copied automatically from DRIVE-PB or selected from historical counts.
-
-The missing-required-year policy and treatment of an absent orientation are
-also unresolved.
+### B13: Approved All-Required Discovery Gate
 
 ```text
-approved: false
-requires_human_approval: true
-resolution_status: blocked
+approved: true
+requires_human_approval: false
+resolution_status: approved_by_human_review
 implementation_allowed: false
+gate_type: all_required
+primary_horizon: 30min
+secondary_horizons_cannot_override_primary_fail: true
+minimum_pooled_events: 150
+minimum_events_per_symbol: 50
+minimum_events_per_year: 40
+minimum_events_per_orientation: 40
+selection_data_used: false
+historical_returns_used: false
+historical_event_counts_used: false
+parameter_search_performed: false
+historical_threshold_comparison_performed: false
 ```
+
+Every required criterion must pass. A false, missing, non-finite,
+insufficient, or non-estimable required criterion produces:
+
+```text
+classification: discovery_failed
+validation_2025_unlocked: false
+paper_eligible: false
+live_eligible: false
+strategy_created: false
+position_sizing_used: false
+orders_created: false
+```
+
+There is no discretionary `promising despite failed gate` status. Economic
+metrics cannot compensate for an integrity failure. Results may be retained
+descriptively after a failed gate but cannot promote the hypothesis.
+
+#### Sample, Representation, And Economics
+
+QQQ and SPY must each have at least 50 primary events. Each of 2022, 2023, and
+2024 must have at least 40, and long and short orientations must each have at
+least 40. Both symbols and both orientations are mandatory; absence or
+insufficiency fails. The pooled minimum is 150. The 150/50 minima are inherited
+cross-project conventions; 40 per year and orientation are new ex-ante
+statistical decisions. These minima do not guarantee power for any specified
+effect size.
+
+All decisional economic metrics use only the 30-minute primary horizon:
+
+- pooled gross mean must be strictly positive;
+- QQQ and SPY gross means must each be strictly positive;
+- long and short gross mean and median must each be strictly positive;
+- pooled, QQQ, and SPY baseline-net means must each be strictly positive;
+- pooled stress-net mean must be non-negative;
+- pooled incremental mean versus the approved control must be strictly
+  positive.
+
+Both mean and median must pass where both are named. Stress net cannot rescue a
+negative baseline-net result. A positive pooled mean cannot hide a mandatory
+symbol with a non-positive required mean. Unlisted cuts remain descriptive.
+
+#### Bootstrap
+
+```text
+confidence_level: 0.95
+bootstrap_method: percentile
+bootstrap_replicates: 10000
+bootstrap_seed: 20260802
+bootstrap_cluster_unit: session_date
+```
+
+Build clusters by `session_date`, keeping all QQQ and SPY events from the same
+date together. Resample clusters with replacement; each replicate contains the
+same number of clusters as the original sample. Recompute each pooled mean for
+every replicate. The bilateral 95% percentile interval uses the 2.5th and
+97.5th percentiles.
+
+The bootstrap lower bounds for pooled gross mean, pooled incremental mean, and
+pooled baseline-net mean must each be strictly greater than zero. Stress net
+has no bootstrap lower-bound requirement; its pooled mean must be non-negative.
+Fewer than two `session_date` clusters, non-finite results, absent groups, or a
+non-estimable bootstrap fails. Independent row resampling is prohibited when
+symbols share a session date.
+
+#### Annual Stability, Concentration, And Leave-One-Out
+
+All 2022, 2023, and 2024 groups must exist, contain at least 40 events, and
+produce finite metrics. At least two years must have strictly positive gross
+mean, and at least two must have strictly positive incremental mean. A missing,
+insufficient, or non-finite year fails. A zero or negative mean counts as not
+positive and no year may be silently omitted.
+
+For each required year:
+
+```text
+C_y = sum(incremental_return for all required primary events in year y)
+annual_concentration = max_y(abs(C_y)) / sum_y(abs(C_y))
+```
+
+Annual concentration must be at most 0.70. The limit is an inherited
+cross-project ex-ante convention against single-year dominance. A zero
+denominator, missing year, non-finite value, or non-estimable result fails.
+
+For leave-one-out, sum incremental contribution by `session_date`, keeping QQQ
+and SPY together, and remove the complete date with the largest absolute total
+incremental contribution. Do not remove only one row or symbol. After removal:
+
+- every year must still have at least 40 events;
+- annual concentration must remain at most 0.70;
+- pooled incremental mean must remain strictly positive;
+- at least two years must retain strictly positive incremental mean.
+
+A missing or insufficient year, one remaining observation or cluster, zero
+denominator, non-finite metric, or non-estimable result fails the leave-one-out
+block.
+
+#### Normative Gate Matrix
+
+| criterion_id | category | scope | metric | operator | threshold | required | missing_data_policy | failure_classification | justification_type | justification | inherited_or_new |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| INT-01 | integrity | global | causal_integrity_passed | = | true | true | FAIL | discovery_failed | A/B | causal event integrity | inherited |
+| INT-02 | integrity | global | dataset_contract_passed | = | true | true | FAIL | discovery_failed | A | approved dataset contract | inherited |
+| INT-03 | integrity | global | manifest_validation_passed | = | true | true | FAIL | discovery_failed | A | manifest traceability | inherited |
+| INT-04 | integrity | global | lookahead_violations | = | 0 | true | FAIL | discovery_failed | B | causal boundary | inherited |
+| INT-05 | integrity | global | unresolved_data_quality_failures | = | 0 | true | FAIL | discovery_failed | A | complete data quality | inherited |
+| INT-06 | integrity | global | 2025_or_2026_contamination | = | false | true | FAIL | discovery_failed | A | temporal partition | inherited |
+| INT-07 | integrity | every confirmed event | required_horizons_available_and_path_complete | = | true | true | FAIL | discovery_failed | B | complete causal paths | new |
+| INT-08 | integrity | global | decision_variants | = | 1 | true | FAIL | discovery_failed | A | multiplicity control | inherited |
+| SMP-01 | sample | pooled | event_count | >= | 150 | true | FAIL | discovery_failed | A/D | minimum precision | inherited |
+| SMP-02 | sample | each QQQ and SPY | event_count | >= | 50 | true | FAIL | discovery_failed | A/D | symbol representation | inherited |
+| SMP-03 | sample | each 2022, 2023, 2024 | event_count | >= | 40 | true | FAIL | discovery_failed | D | annual representation | new |
+| REP-01 | representation | each long and short | event_count | >= | 40 | true | FAIL | discovery_failed | D | symmetric orientation representation | new |
+| ECO-01 | economy | pooled | gross_mean_30min | > | 0 | true | FAIL | discovery_failed | C | favorable primary effect | inherited |
+| ECO-02 | economy | each QQQ and SPY | gross_mean_30min | > | 0 | true | FAIL | discovery_failed | C/D | no pooled masking | inherited |
+| ECO-03 | economy | each long and short | gross_mean_and_median_30min | > | 0 | true | FAIL | discovery_failed | C/D | bilateral consistency | inherited |
+| ECO-04 | economy | pooled and each symbol | baseline_net_mean_30min | > | 0 | true | FAIL | discovery_failed | C | exceeds inherited baseline cost | expanded |
+| ECO-05 | economy | pooled | stress_net_mean_30min | >= | 0 | true | FAIL | discovery_failed | C | adverse-cost robustness | inherited |
+| INC-01 | incremental | pooled | incremental_mean_30min | > | 0 | true | FAIL | discovery_failed | C/D | value over exact-time control | inherited |
+| UNC-01 | uncertainty | pooled | gross_incremental_baseline_95pct_lower_bounds | > | 0 | true | FAIL | discovery_failed | A/D | session-clustered uncertainty | inherited |
+| STB-01 | stability | 2022-2024 | years_with_positive_gross_mean_30min | >= | 2 | true | FAIL | discovery_failed | A/D | annual persistence | inherited |
+| STB-02 | stability | 2022-2024 | years_with_positive_incremental_mean_30min | >= | 2 | true | FAIL | discovery_failed | D | incremental persistence | new |
+| CON-01 | concentration | annual | max_abs_annual_incremental_share | <= | 0.70 | true | FAIL | discovery_failed | A/D | no annual dominance | inherited |
+| CON-02 | concentration | leave-largest-session-out | max_abs_annual_incremental_share | <= | 0.70 | true | FAIL | discovery_failed | A/D | session influence robustness | inherited |
+| CON-03 | concentration | leave-largest-session-out | pooled_incremental_mean_30min | > | 0 | true | FAIL | discovery_failed | D | effect survives largest session | new |
+| CON-04 | concentration | leave-largest-session-out | positive_incremental_years_with_minimum_40 | >= | 2 | true | FAIL | discovery_failed | A/D | residual annual stability | expanded |
+| PRO-01 | promotion | global | all_required_criteria | = | true | true | FAIL | discovery_failed | A | sole validation unlock condition | inherited |
+
+No criterion has further human approval pending. `PRO-01` is the sole condition
+for `validation_2025_unlocked=true`; any failure keeps validation, strategy,
+paper, live, sizing, and orders disabled.
 
 ### B14: Temporal Partitions
 
@@ -430,23 +603,28 @@ Not permitted:
 
 | blocker_id | decision_id | description | human_decision_required | resolved | resolution |
 | --- | --- | --- | --- | --- | --- |
-| VWAP-DEV-BLK-05 | B5 | Approve strict symmetric boundary and set one ex-ante numeric threshold | true | false | Pending |
-| VWAP-DEV-BLK-06 | B6 | Approve exact earliest/latest eligible times and early-close policy | true | false | Pending |
-| VWAP-DEV-BLK-13 | B13 | Approve complete gate, numeric thresholds, bootstrap, and concentration policy | true | false | Pending |
 
 ## Resolved By Human Review
 
-`VWAP-DEV-BLK-01` through `VWAP-DEV-BLK-04`, `VWAP-DEV-BLK-07` through
-`VWAP-DEV-BLK-12`, and `VWAP-DEV-BLK-14` through `VWAP-DEV-BLK-15` are resolved.
-B7-B9 were resolved with corrected causal wording; all other listed decisions
-were approved without correction. Resolved items are not preregistration
-blockers and do not authorize implementation.
+All 15 conceptual blockers are resolved:
+
+- `VWAP-DEV-BLK-01` through `VWAP-DEV-BLK-04`: approved by human review;
+- `VWAP-DEV-BLK-05`: approved with strict symmetric `tau=0.005`;
+- `VWAP-DEV-BLK-06`: approved with the calendar-relative eligible window;
+- `VWAP-DEV-BLK-07` through `VWAP-DEV-BLK-09`: approved with corrected causal
+  wording;
+- `VWAP-DEV-BLK-10` through `VWAP-DEV-BLK-12`: approved by human review;
+- `VWAP-DEV-BLK-13`: approved with the complete balanced all-required gate;
+- `VWAP-DEV-BLK-14` and `VWAP-DEV-BLK-15`: approved by human review.
+
+Resolved decisions authorize preregistration drafting only. They do not freeze
+methodology or authorize implementation.
 
 ```text
-ready_for_human_review: true
 human_review_performed: true
-human_approved: false
-ready_for_preregistration: false
-blockers_remaining: 3
+human_approved: true
+ready_for_preregistration: true
+methodology_frozen: false
+blockers_remaining: 0
 implementation_allowed: false
 ```
