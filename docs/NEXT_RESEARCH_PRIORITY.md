@@ -162,7 +162,7 @@ apply.
 | HYP-FCR-EVENT-01 | YAML, preregistration/results, event artifacts | canonical hash `1b6ad06b974d996cdf6bd0a3a21eae097e94322e80fdec94c2cfc4ec3c18fe81` |
 | HYP-OR-CONT-EVENT-01 | YAML, preregistration/results, discovery artifacts | preregistration `fe13dfe94a6b679a5abf33f079ef8497e368b4f5`; execution freeze `ec8803fae45ec7f07f338350e6d77b80ec6a8929`; hash `d76572e7534e8cf66104ceb2d30dd08a7c0b080fc4460e496b58a08d3736060b` |
 | HYP-DRIVE-PB-01 | design/preregistration/results docs; frozen YAML; discovery artifacts | conceptual `925cede00f3d9c1b4de46e225f98d4636c19a831`; clarification `764478b86a01619620166848204e527f2fb55c55`; preregistration `adb7f7b59b08389883777103e23f98ea298a5965`; execution `3341d439cab38222c023c6657edb0300e503b1f8`; closure `8bf40206aa2096bbbb12b6dcd15ca561a936c722` |
-| HYP-VWAP-DEV-01 | `configs/research/hypotheses/HYP-VWAP-DEV-01.yaml`; `docs/HYP_VWAP_DEV_01_DESIGN_DECISIONS.md`; `docs/HYP_VWAP_DEV_01_PREREGISTRATION_CLARIFICATIONS.md`; `docs/HYP_VWAP_DEV_01_PREREGISTRATION_TRACEABILITY.md` | conceptual design `5a0c3dee3af99093fb5ff5eb2ab641767d1e086f`; clarification `9d2bbf721c70da7a4b02df49d9973cffc77c09f6`; canonical hash `7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c`; preregistration freeze SHA pending post-freeze metadata |
+| HYP-VWAP-DEV-01 | `configs/research/hypotheses/HYP-VWAP-DEV-01.yaml`; `docs/HYP_VWAP_DEV_01_DESIGN_DECISIONS.md`; `docs/HYP_VWAP_DEV_01_PREREGISTRATION_CLARIFICATIONS.md`; `docs/HYP_VWAP_DEV_01_PREREGISTRATION_TRACEABILITY.md` | conceptual design `5a0c3dee3af99093fb5ff5eb2ab641767d1e086f`; clarification `9d2bbf721c70da7a4b02df49d9973cffc77c09f6`; preregistration `6fbd8f09b279c0b83d31602c7c75a42787c70b42`; canonical hash `7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c` |
 | Conceptual HYP-CROSS | `docs/INTRADAY_HYPOTHESIS_REFINEMENT_PROTOCOL.md` | no hypothesis freeze commit/hash |
 | Legacy crypto strategies | `docs/DAYTRADE_REAL_DATA_VALIDATION.md`; `outputs/daytrade` | no central preregistration hash |
 | Legacy equity OR/FVG | `docs/OR_FVG_BASE_RESEARCH_SUMMARY.md`; corresponding outputs | no central hypothesis ID/hash |
@@ -301,10 +301,10 @@ Current state:
 - `methodology_frozen=true`;
 - `conceptual_design_freeze_commit=5a0c3dee3af99093fb5ff5eb2ab641767d1e086f`;
 - `clarification_freeze_commit=9d2bbf721c70da7a4b02df49d9973cffc77c09f6`;
+- `preregistration_freeze_commit=6fbd8f09b279c0b83d31602c7c75a42787c70b42`;
 - `canonical_payload_sha256=7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c`;
-- preregistration freeze commit SHA pending a post-freeze metadata commit;
 - `implementation_allowed=false`;
-- `implementation_status=not_implemented`;
+- `implementation_status=implementation_not_authorized`;
 - `discovery_status=discovery_not_opened`;
 - `blockers_remaining=0`;
 - 2025 locked;
@@ -323,10 +323,12 @@ There is at most one candidate per symbol-session. The sole primary horizon is
 horizons cannot rescue a primary failure.
 
 The next authorized task is only to prepare the implementation plan and
-implementation test contract. The frozen preregistration does not authorize
-creation of code, tests, a runner, dataset access, discovery, strategy
-construction, or paper/live activity. Any later implementation must preserve
-the approved design without additional variants or discretionary decisions.
+implementation test contract. This permits designing the plan and its
+synthetic-test contract, but does not authorize creating the implementation,
+executable tests, or a runner; opening datasets, 2025, or 2026; executing
+discovery; or creating orders or paper/live capability. Any later
+implementation must preserve the approved design without additional variants
+or discretionary decisions.
 
 The design must explain why it is not the rejected generic crypto VWAP
 Pullback, Extreme Mean Reversion, or prior two-ATR/RSI VWAP-deviation strategy.

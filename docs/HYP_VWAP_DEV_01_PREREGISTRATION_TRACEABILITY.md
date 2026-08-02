@@ -13,6 +13,8 @@ status: preregistered_not_executed
 preregistration_status: frozen
 preregistration_created: true
 preregistration_frozen: true
+preregistration_freeze_commit: 6fbd8f09b279c0b83d31602c7c75a42787c70b42
+preregistration_freeze_commit_message: Freeze HYP-VWAP-DEV-01 preregistration
 methodology_frozen: true
 implementation_allowed: false
 implementation_started: false
@@ -24,7 +26,7 @@ translation_complete: true
 unresolved_translation_blockers: 0
 traceability_complete: true
 material_blockers_remaining: 0
-ready_for_preregistration_freeze: true
+canonical_payload_sha256: 7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c
 ```
 
 The normative source is `docs/HYP_VWAP_DEV_01_DESIGN_DECISIONS.md` at the
@@ -172,9 +174,14 @@ results, historical counts, and run-derived data. These exclusions prevent
 self-reference and machine-local or post-execution metadata from changing the
 frozen methodological payload.
 
-No preregistration freeze commit SHA is asserted here or in the YAML. The real
-SHA will be recorded by a later documentary metadata commit and will not alter
-the methodological canonical payload.
+The preregistration freeze commit SHA
+`6fbd8f09b279c0b83d31602c7c75a42787c70b42` was registered after the freeze
+to avoid self-reference. The commit SHA is documentary metadata and is not
+part of the canonical payload or the YAML. This post-freeze update does not
+modify methodology, B1-B15, or any gate criterion. The canonical hash remains
+`7a88b21a6ce007d3f607e36e380b8e1ece84bd053728b42acddb934ea285452c`
+without recalculation, the preregistration remains frozen, and implementation
+is still not authorized.
 
 ## Translation Conclusion
 
