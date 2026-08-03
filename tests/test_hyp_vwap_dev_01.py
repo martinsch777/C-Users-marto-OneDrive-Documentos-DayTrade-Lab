@@ -26,6 +26,7 @@ from src.research.hyp_vwap_dev_01 import (
     classify_gate,
     clustered_percentile_bootstrap,
     compute_path_metrics,
+    derive_integrity_criteria,
     derive_substantive_criteria,
     detect_session_event,
     evaluate_immediate_confirmation,
@@ -67,6 +68,10 @@ CORE_TEST_ID_COVERAGE = {
     f"{prefix}-{index:02d}": _CORE_METHOD_BY_PREFIX[prefix]
     for prefix, count in CORE_ID_COUNTS.items()
     for index in range(1, count + 1)
+}
+FIX_TEST_ID_COVERAGE = {
+    **{f"SC-{index:02d}": "test_official_session_close_contracts" for index in range(1, 11)},
+    **{f"INTFIX-{index:02d}": "test_integrity_evidence_contracts" for index in range(1, 16)},
 }
 
 
@@ -131,6 +136,32 @@ def _path_fixture() -> tuple[pd.DataFrame, pd.DataFrame]:
         "close": np.linspace(100.1, 101.5, len(timestamps)),
     })
     return events, bars
+
+
+def _official_closes(close: str = "2024-01-03 16:00") -> dict[date, pd.Timestamp]:
+    return {date(2024, 1, 3): pd.Timestamp(close, tz="America/New_York")}
+
+
+def _integrity_inputs(paths: pd.DataFrame) -> dict[str, object]:
+    return {
+        "causal_integrity_report": {
+            "causal_integrity_passed": True,
+            "lookahead_violations": 0,
+            "unresolved_data_quality_failures": 0,
+        },
+        "dataset_contract_report": {"dataset_contract_passed": True},
+        "manifest_validation_report": {"manifest_validation_passed": True},
+        "temporal_access_report": {
+            "materialized_rows_after_discovery_end": 0,
+            "historical_2025_rows_materialized": 0,
+            "historical_2026_rows_materialized": 0,
+            "event_rows_outside_discovery": 0,
+            "control_rows_outside_discovery": 0,
+            "horizons_crossing_session_or_period": 0,
+        },
+        "path_metrics": paths,
+        "decision_variants": 1,
+    }
 
 
 def _annual_rows() -> pd.DataFrame:
@@ -272,7 +303,7 @@ class PathAndControlTests(unittest.TestCase):
         self.assertAlmostEqual(mfe, 0.02)
         self.assertAlmostEqual(mae, -0.02)
         events, bars = _path_fixture()
-        metrics = compute_path_metrics(events, bars)
+        metrics = compute_path_metrics(events, bars, _official_closes())
         self.assertEqual(set(metrics["horizon"]), {"15min", "30min", "60min", "session_close"})
         self.assertTrue(metrics["path_complete"].all())
         self.assertTrue(np.allclose(metrics["baseline_net_return"], metrics["gross_return"] - metrics["baseline_cost"]))
@@ -294,8 +325,79 @@ class PathAndControlTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_exact_time_control(events, controls[controls["symbol"] == "SPY"])
         path_events, path_bars = _path_fixture()
-        candidates = build_unconditional_candidates(path_events, path_bars)
+        candidates = build_unconditional_candidates(path_events, path_bars, _official_closes())
         self.assertEqual(set(candidates["horizon"]), {"15min", "30min", "60min", "session_close"})
+
+    def test_official_session_close_contracts(self) -> None:
+        events, bars = _path_fixture()
+        complete = compute_path_metrics(events, bars, _official_closes())
+        self.assertTrue(complete["path_complete"].all())  # SC-01
+
+        incomplete_bars = bars[bars["timestamp"] <= pd.Timestamp("2024-01-03 15:25", tz="America/New_York")]
+        incomplete = compute_path_metrics(events, incomplete_bars, _official_closes())
+        close_row = incomplete[incomplete["horizon"] == "session_close"].iloc[0]
+        self.assertEqual(close_row["horizon_target_timestamp"], _official_closes()[date(2024, 1, 3)])  # SC-02
+        self.assertFalse(close_row["horizon_available"])
+        self.assertFalse(close_row["path_complete"])  # SC-03
+
+        early_events = events.copy()
+        early_events["executable_timestamp"] = pd.Timestamp("2024-01-03 10:05", tz="America/New_York")
+        early_bars = bars[bars["timestamp"] <= pd.Timestamp("2024-01-03 12:55", tz="America/New_York")]
+        early = compute_path_metrics(early_events, early_bars, _official_closes("2024-01-03 13:00"))
+        self.assertTrue(early["path_complete"].all())
+        self.assertEqual(early.loc[early["horizon"] == "session_close", "horizon_target_timestamp"].iloc[0], _official_closes("2024-01-03 13:00")[date(2024, 1, 3)])  # SC-04
+
+        extra = pd.concat([bars, bars.tail(1).assign(timestamp=pd.Timestamp("2024-01-03 16:00", tz="America/New_York"), close=999.0)])
+        extra_result = compute_path_metrics(events, extra, _official_closes())
+        self.assertEqual(extra_result.loc[extra_result["horizon"] == "session_close", "horizon_target_timestamp"].iloc[0], _official_closes()[date(2024, 1, 3)])  # SC-05
+        with self.assertRaisesRegex(ValueError, "OFFICIAL_SESSION_CLOSE_MISSING"):
+            compute_path_metrics(events, bars, {})  # SC-06
+        with self.assertRaisesRegex(ValueError, "OFFICIAL_SESSION_CLOSE_NAIVE"):
+            compute_path_metrics(events, bars, {date(2024, 1, 3): pd.Timestamp("2024-01-03 16:00")})  # SC-07
+        early_close = _official_closes("2024-01-03 13:00")[date(2024, 1, 3)]
+        self.assertTrue(breach_close_is_eligible(pd.Timestamp("2024-01-03 11:55", tz="America/New_York"), early_close))
+        self.assertFalse(breach_close_is_eligible(pd.Timestamp("2024-01-03 12:00", tz="America/New_York"), early_close))  # SC-08
+        integrity = derive_integrity_criteria(**_integrity_inputs(incomplete))
+        self.assertFalse(integrity["INT-07"].passed)  # SC-09
+        late_events = events.copy()
+        late_events["executable_timestamp"] = pd.Timestamp("2024-01-03 15:15", tz="America/New_York")
+        late = compute_path_metrics(late_events, bars, _official_closes())
+        self.assertFalse(late.loc[late["horizon"] == "60min", "horizon_available"].iloc[0])  # SC-10
+
+    def test_integrity_evidence_contracts(self) -> None:
+        events, bars = _path_fixture()
+        paths = compute_path_metrics(events, bars, _official_closes())
+        base = _integrity_inputs(paths)
+        valid = derive_integrity_criteria(**base)
+        self.assertTrue(all(result.passed for result in valid.values()))  # INTFIX-01
+
+        mutations = [
+            ("INT-01", "causal_integrity_report", "causal_integrity_passed", False),
+            ("INT-02", "dataset_contract_report", "dataset_contract_passed", False),
+            ("INT-03", "manifest_validation_report", "manifest_validation_passed", False),
+            ("INT-04", "causal_integrity_report", "lookahead_violations", 1),
+            ("INT-05", "causal_integrity_report", "unresolved_data_quality_failures", 1),
+            ("INT-06", "temporal_access_report", "historical_2025_rows_materialized", 1),
+        ]
+        failed_results = {}
+        for criterion_id, report_name, field, value in mutations:
+            inputs = {**base, report_name: {**base[report_name], field: value}}
+            failed_results[criterion_id] = derive_integrity_criteria(**inputs)[criterion_id]
+            self.assertFalse(failed_results[criterion_id].passed, criterion_id)  # INTFIX-02..07
+        incomplete = paths.copy(); incomplete.loc[0, "path_complete"] = False
+        self.assertFalse(derive_integrity_criteria(**{**base, "path_metrics": incomplete})["INT-07"].passed)  # INTFIX-08
+        unavailable = paths.copy(); unavailable.loc[0, "horizon_available"] = False
+        self.assertFalse(derive_integrity_criteria(**{**base, "path_metrics": unavailable})["INT-07"].passed)  # INTFIX-09
+        self.assertFalse(derive_integrity_criteria(**{**base, "decision_variants": 2})["INT-08"].passed)  # INTFIX-10
+        self.assertFalse(derive_integrity_criteria(**{**base, "manifest_validation_report": None})["INT-03"].passed)  # INTFIX-11
+        self.assertFalse(derive_integrity_criteria(**{**base, "decision_variants": np.nan})["INT-08"].passed)  # INTFIX-12
+
+        metrics = _passing_metrics()
+        metrics["INT-01"] = failed_results["INT-01"].value
+        statuses = derive_substantive_criteria(metrics, _config()["discovery_gate"]["criteria"])
+        self.assertFalse(evaluate_pro_01(statuses))  # INTFIX-13
+        gate = classify_gate(statuses)
+        self.assertFalse(gate.validation_2025_unlocked)  # INTFIX-14
 
 
 class RobustnessAndGateTests(unittest.TestCase):

@@ -15,6 +15,7 @@ import pandas as pd
 from src.research.hyp_vwap_dev_01 import (
     ACTIVE_AMENDMENT_FREEZE_COMMIT,
     ConcentrationResult,
+    CriterionResult,
     EXPECTED_CANONICAL_HASH,
     GateResult,
     LeaveOneOutResult,
@@ -309,9 +310,17 @@ class AtomicProgressTests(unittest.TestCase):
             controlled = pd.DataFrame([{
                 "symbol": "QQQ", "session_date": "2024-01-03",
                 "executable_timestamp": "2024-01-03T15:05:00Z", "horizon": "30min",
+                "horizon_target_timestamp": "2024-01-03T15:35:00Z",
+                "horizon_available": True,
                 "unconditional_return": 0.0, "unconditional_sample_count": 2,
                 "path_complete": True,
             }])
+            integrity = {
+                f"INT-{index:02d}": CriterionResult(
+                    f"INT-{index:02d}", True, True, {"derived": index}
+                )
+                for index in range(1, 9)
+            }
             statuses = {criterion_id: "passed" for criterion_id in SUBSTANTIVE_CRITERION_IDS}
             concentration = ConcentrationResult(0.4, True, "PASS")
             loo = LeaveOneOutResult(
@@ -322,9 +331,17 @@ class AtomicProgressTests(unittest.TestCase):
             request = DiscoveryRequest(mode="run_discovery")
             with patch.object(runner, "DEFAULT_OUTPUT_DIR", final_dir), patch.object(
                 runner, "validate_discovery_preflight", return_value={"config": {"discovery_gate": {"criteria": []}}}
-            ), patch.object(runner, "_load_discovery_inputs", return_value=(pd.DataFrame([{"x": 1}]), {"QQQ": {}})), patch.object(
+            ), patch.object(runner, "_load_discovery_inputs", return_value=(
+                pd.DataFrame([{"x": 1}]), {"QQQ": {}},
+                {"dataset_contract_passed": True, "validated_symbols": ["QQQ", "SPY"]},
+                {"manifest_validation_passed": True},
+                {"materialized_rows_after_discovery_end": 0, "historical_2025_rows_materialized": 0,
+                 "historical_2026_rows_materialized": 0},
+            )), patch.object(
                 runner, "resample_complete_rth_1m_to_5m", return_value=pd.DataFrame([{"x": 1}])
             ), patch.object(runner, "attach_causal_session_vwap", return_value=pd.DataFrame([{"x": 1}])), patch.object(
+                runner, "_official_session_closes", return_value={date(2024, 1, 3): pd.Timestamp("2024-01-03 16:00", tz="America/New_York")}
+            ), patch.object(
                 runner, "_detect_events", return_value=(events, exclusions)
             ), patch.object(runner, "compute_path_metrics", return_value=controlled), patch.object(
                 runner, "build_unconditional_candidates", return_value=controlled
@@ -332,7 +349,9 @@ class AtomicProgressTests(unittest.TestCase):
                 runner, "clustered_percentile_bootstrap", return_value={"gross_return": (0.1, 0.2)}
             ), patch.object(runner, "annual_concentration", return_value=concentration), patch.object(
                 runner, "leave_one_largest_session_out", return_value=loo
-            ), patch.object(runner, "_gate_metric_mapping", return_value={}), patch.object(
+            ), patch.object(runner, "derive_integrity_criteria", return_value=integrity), patch.object(
+                runner, "_gate_metric_mapping", return_value={}
+            ), patch.object(
                 runner, "derive_substantive_criteria", return_value=statuses
             ), patch.object(runner, "classify_gate", return_value=gate):
                 result = runner.run_discovery(request)
@@ -340,6 +359,8 @@ class AtomicProgressTests(unittest.TestCase):
             self.assertTrue(final_dir.is_dir())
             self.assertEqual({path.name for path in final_dir.iterdir()}, set(runner.REQUIRED_OUTPUT_FILES))
             self.assertFalse(any(path.name.startswith(".final.tmp-") for path in final_dir.parent.iterdir()))
+            manifest = json.loads((final_dir / "run_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["integrity_criteria"]["INT-01"]["evidence"], {"derived": 1})  # INTFIX-15
 
 
 class SecurityTests(unittest.TestCase):

@@ -25,6 +25,8 @@ from src.research.hyp_drive_pb_01_discovery import (
     _atomic_rename as _shared_atomic_rename,
     _sha256_file as _shared_sha256_file,
     _write_json_atomic as _shared_write_json_atomic,
+    load_bounded_dataset as _shared_load_bounded_dataset,
+    validate_minute_frame as _shared_validate_minute_frame,
 )
 from src.research.hyp_vwap_dev_01 import (
     ACTIVE_AMENDMENT_FREEZE_COMMIT,
@@ -46,6 +48,7 @@ from src.research.hyp_vwap_dev_01 import (
     classify_gate,
     clustered_percentile_bootstrap,
     compute_path_metrics,
+    derive_integrity_criteria,
     derive_substantive_criteria,
     detect_session_event,
     leave_one_largest_session_out,
@@ -72,6 +75,7 @@ REQUIRED_CORE_SYMBOLS = (
     "attach_causal_session_vwap",
     "detect_session_event",
     "compute_path_metrics",
+    "derive_integrity_criteria",
     "build_exact_time_control",
     "build_unconditional_candidates",
     "clustered_percentile_bootstrap",
@@ -233,6 +237,64 @@ def validate_implementation(
     missing = [name for name in REQUIRED_CORE_SYMBOLS if not callable(getattr(core, name, None))]
     if missing:
         raise RuntimeError(f"REQUIRED_SYMBOL_MISSING: {missing}")
+    session = date(2024, 7, 3)
+    start = pd.Timestamp("2024-07-03 10:05", tz=TIMEZONE)
+    official_close = pd.Timestamp("2024-07-03 13:00", tz=TIMEZONE)
+    synthetic_events = pd.DataFrame([{
+        "symbol": "QQQ", "session_date": session, "direction": "long",
+        "executable_timestamp": start, "executable_price": 100.0,
+    }])
+    synthetic_timestamps = pd.date_range(
+        start, pd.Timestamp("2024-07-03 12:55", tz=TIMEZONE), freq="5min"
+    )
+    synthetic_bars = pd.DataFrame({
+        "symbol": ["QQQ"] * len(synthetic_timestamps),
+        "session_date": [session] * len(synthetic_timestamps),
+        "timestamp": synthetic_timestamps,
+        "open": [100.0] * len(synthetic_timestamps),
+        "high": [101.0] * len(synthetic_timestamps),
+        "low": [99.0] * len(synthetic_timestamps),
+        "close": [100.5] * len(synthetic_timestamps),
+    })
+    complete_paths = compute_path_metrics(synthetic_events, synthetic_bars, {session: official_close})
+    incomplete_paths = compute_path_metrics(synthetic_events, synthetic_bars.iloc[:-1], {session: official_close})
+    zero_temporal = {
+        "materialized_rows_after_discovery_end": 0, "historical_2025_rows_materialized": 0,
+        "historical_2026_rows_materialized": 0, "event_rows_outside_discovery": 0,
+        "control_rows_outside_discovery": 0, "horizons_crossing_session_or_period": 0,
+    }
+    synthetic_evidence = {
+        "causal_integrity_report": {"causal_integrity_passed": True, "lookahead_violations": 0,
+                                     "unresolved_data_quality_failures": 0},
+        "dataset_contract_report": {"dataset_contract_passed": True},
+        "manifest_validation_report": {"manifest_validation_passed": True},
+        "temporal_access_report": zero_temporal,
+        "path_metrics": complete_paths,
+        "decision_variants": 1,
+    }
+    integrity = derive_integrity_criteria(**synthetic_evidence)
+    missing_integrity = derive_integrity_criteria(
+        causal_integrity_report=None, dataset_contract_report=None,
+        manifest_validation_report=None, temporal_access_report=None,
+        path_metrics=None, decision_variants=None,
+    )
+    individual_failures = {
+        "INT-01": {"causal_integrity_report": {**synthetic_evidence["causal_integrity_report"], "causal_integrity_passed": False}},
+        "INT-02": {"dataset_contract_report": {"dataset_contract_passed": False}},
+        "INT-03": {"manifest_validation_report": {"manifest_validation_passed": False}},
+        "INT-04": {"causal_integrity_report": {**synthetic_evidence["causal_integrity_report"], "lookahead_violations": 1}},
+        "INT-05": {"causal_integrity_report": {**synthetic_evidence["causal_integrity_report"], "unresolved_data_quality_failures": 1}},
+        "INT-06": {"temporal_access_report": {**zero_temporal, "historical_2025_rows_materialized": 1}},
+        "INT-07": {"path_metrics": incomplete_paths},
+        "INT-08": {"decision_variants": 2},
+    }
+    individual_integrity_failures_valid = all(
+        not derive_integrity_criteria(**{**synthetic_evidence, **override})[criterion_id].passed
+        for criterion_id, override in individual_failures.items()
+    )
+    failed_statuses = {criterion_id: "passed" for criterion_id in SUBSTANTIVE_CRITERION_IDS}
+    failed_statuses["INT-01"] = "failed"
+    failed_gate = classify_gate(failed_statuses)
     criteria = config["discovery_gate"]["criteria"]
     ids = tuple(item["criterion_id"] for item in criteria)
     if ids != ALL_CRITERION_IDS or tuple(criteria[-1]["input_criterion_ids"]) != SUBSTANTIVE_CRITERION_IDS:
@@ -253,6 +315,18 @@ def validate_implementation(
         "substantive_criterion_count": len(SUBSTANTIVE_CRITERION_IDS),
         "pro_01_nonrecursive": "PRO-01" not in criteria[-1]["input_criterion_ids"],
         "safety_flags_all_false": not any(config["safety_flags"].values()),
+        "official_session_close_contract_valid": bool(
+            complete_paths["path_complete"].all()
+            and not incomplete_paths.loc[incomplete_paths["horizon"] == "session_close", "path_complete"].iloc[0]
+            and complete_paths.loc[complete_paths["horizon"] == "session_close", "horizon_target_timestamp"].iloc[0] == official_close
+        ),
+        "integrity_criteria_contract_valid": bool(
+            all(result.passed for result in integrity.values())
+            and all(not result.passed for result in missing_integrity.values())
+            and individual_integrity_failures_valid
+        ),
+        "integrity_failure_forces_pro_01_false": not failed_gate.pro_01,
+        "integrity_failure_keeps_validation_locked": not failed_gate.validation_2025_unlocked,
         "datasets_opened": False,
         "manifests_opened": False,
         "discovery_executed": False,
@@ -308,43 +382,77 @@ def crop_discovery_period(frame: pd.DataFrame) -> pd.DataFrame:
     ].copy()
 
 
-def _load_discovery_inputs() -> tuple[pd.DataFrame, Mapping[str, Any]]:
+def _load_discovery_inputs() -> tuple[
+    pd.DataFrame, Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]
+]:
     """Future-only approved manifest and bounded dataset access."""
 
     frames: list[pd.DataFrame] = []
     snapshots: dict[str, Any] = {}
+    temporal_reports: list[Mapping[str, Any]] = []
+    validated_symbols: list[str] = []
+    validated_manifests: list[str] = []
     calendar = EquitySessionCalendar.us_equity()
     for symbol in SYMBOLS:
         manifest = require_approved_dataset_manifest_file(
             DEFAULT_DATASET_PATHS[symbol], symbol, "1min", DEFAULT_MANIFEST_PATHS[symbol]
         )
-        frame = pd.read_csv(DEFAULT_DATASET_PATHS[symbol])
-        frame["symbol"] = symbol
+        frame, temporal = _shared_load_bounded_dataset(DEFAULT_DATASET_PATHS[symbol])
+        frame = _shared_validate_minute_frame(frame, symbol, calendar)
         timestamps = pd.to_datetime(frame["timestamp"], utc=True).dt.tz_convert(TIMEZONE)
         frame["timestamp"] = timestamps
         frame["session_date"] = timestamps.dt.date
-        if not calendar.mask(frame["timestamp"]).all():
-            raise PermissionError(f"{symbol} contains rows outside approved RTH.")
         frame = crop_discovery_period(frame)
         frames.append(frame)
+        temporal_reports.append(temporal.to_record())
+        validated_symbols.append(symbol)
+        validated_manifests.append(symbol)
         snapshots[symbol] = {
             "dataset_path": str(DEFAULT_DATASET_PATHS[symbol]),
             "manifest_path": str(DEFAULT_MANIFEST_PATHS[symbol]),
             "dataset_sha256": manifest.sha256,
             "dataset_status": manifest.dataset_status,
         }
-    return pd.concat(frames, ignore_index=True), snapshots
+    temporal_fields = (
+        "materialized_rows_after_discovery_end", "historical_2025_rows_materialized",
+        "historical_2026_rows_materialized",
+    )
+    temporal_report = {
+        key: sum(int(report[key]) for report in temporal_reports) for key in temporal_fields
+    }
+    return (
+        pd.concat(frames, ignore_index=True),
+        snapshots,
+        {"dataset_contract_passed": set(validated_symbols) == set(SYMBOLS),
+         "validated_symbols": validated_symbols},
+        {"manifest_validation_passed": set(validated_manifests) == set(SYMBOLS),
+         "validated_symbols": validated_manifests},
+        temporal_report,
+    )
 
 
-def _detect_events(five_minute: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    calendar = EquitySessionCalendar.us_equity()
+def _official_session_closes(
+    frame: pd.DataFrame, calendar: EquitySessionCalendar
+) -> Mapping[date, pd.Timestamp]:
+    closes: dict[date, pd.Timestamp] = {}
+    for value in pd.to_datetime(frame["session_date"]).dt.date.unique():
+        close_clock = calendar.session_close(value)
+        if close_clock is None:
+            raise ValueError(f"OFFICIAL_SESSION_CLOSE_MISSING: {value}")
+        closes[value] = pd.Timestamp.combine(value, close_clock).tz_localize(TIMEZONE)
+    return closes
+
+
+def _detect_events(
+    five_minute: pd.DataFrame,
+    official_session_closes: Mapping[date, pd.Timestamp],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     events: list[dict[str, Any]] = []
     exclusions: list[dict[str, Any]] = []
     for (symbol, session), group in five_minute.groupby(["symbol", "session_date"], sort=True):
-        close_clock = calendar.session_close(session)
-        if close_clock is None:
-            continue
-        close = pd.Timestamp.combine(session, close_clock).tz_localize(TIMEZONE)
+        if session not in official_session_closes:
+            raise ValueError(f"OFFICIAL_SESSION_CLOSE_MISSING: {session}")
+        close = official_session_closes[session]
         result = detect_session_event(
             group, symbol=str(symbol), session_date=session, session_close=close
         )
@@ -382,18 +490,14 @@ def _gate_metric_mapping(
     intervals: Mapping[str, tuple[float, float]],
     concentration_value: float,
     loo: Any,
+    integrity_criteria: Mapping[str, Any],
 ) -> Mapping[str, Any]:
     aggregate = _aggregate_metrics(primary)
     yearly = primary.groupby("year")
     return {
-        "INT-01": True,
-        "INT-02": True,
-        "INT-03": True,
-        "INT-04": 0,
-        "INT-05": 0,
-        "INT-06": False,
-        "INT-07": bool(primary["path_complete"].all()),
-        "INT-08": 1,
+        **{criterion_id: integrity_criteria[criterion_id].value
+           for criterion_id in ("INT-01", "INT-02", "INT-03", "INT-04",
+                                "INT-05", "INT-06", "INT-07", "INT-08")},
         "SMP-01": aggregate["event_count"],
         "SMP-02": aggregate["symbol_event_counts"],
         "SMP-03": aggregate["year_event_counts"],
@@ -426,6 +530,7 @@ def _write_closed_outputs(
     concentration: Any,
     loo: Any,
     gate: Any,
+    integrity_criteria: Mapping[str, Any],
     progress: ExecutionProgress,
 ) -> None:
     _shared_write_json_atomic(temp_dir / "dataset_manifest_snapshot.json", manifest_snapshot)
@@ -449,6 +554,10 @@ def _write_closed_outputs(
         "primary_path_count": int((paths["horizon"] == PRIMARY_HORIZON).sum()),
         "criterion_count": len(gate.criteria),
         "classification": gate.classification,
+        "integrity_criteria": {
+            criterion_id: asdict(result)
+            for criterion_id, result in integrity_criteria.items()
+        },
         "results_written": False,
         "paper_eligible": False,
         "live_eligible": False,
@@ -498,22 +607,57 @@ def run_discovery(request: DiscoveryRequest) -> Mapping[str, Any]:
     progress = ExecutionProgress(path=temp_dir / "execution_progress.json")
     try:
         progress.record("preflight")
-        minute, manifest_snapshot = _load_discovery_inputs()
+        (minute, manifest_snapshot, dataset_report, manifest_report,
+         temporal_report) = _load_discovery_inputs()
         progress.record("inputs_loaded", rows=len(minute))
         five = attach_causal_session_vwap(resample_complete_rth_1m_to_5m(minute))
         progress.record("resampled_and_vwap", rows=len(five))
-        events, exclusions = _detect_events(five)
+        calendar = EquitySessionCalendar.us_equity()
+        official_closes = _official_session_closes(five, calendar)
+        events, exclusions = _detect_events(five, official_closes)
         if events.empty:
             raise ValueError("No confirmed events; required gate cannot be estimated.")
-        paths = compute_path_metrics(events, five)
-        controls = build_unconditional_candidates(events, five)
+        paths = compute_path_metrics(events, five, official_closes)
+        controls = build_unconditional_candidates(events, five, official_closes)
+        lookahead_violations = 0
+        if {"breach_timestamp", "confirmation_timestamp", "executable_timestamp"}.issubset(events):
+            breach = pd.to_datetime(events["breach_timestamp"], utc=True)
+            confirmation = pd.to_datetime(events["confirmation_timestamp"], utc=True)
+            executable = pd.to_datetime(events["executable_timestamp"], utc=True)
+            lookahead_violations = int(((confirmation != executable) | (confirmation != breach + pd.Timedelta(minutes=5))).sum())
+        else:
+            lookahead_violations = len(events)
+        causal_report = {
+            "causal_integrity_passed": lookahead_violations == 0,
+            "lookahead_violations": lookahead_violations,
+            "unresolved_data_quality_failures": len(SYMBOLS) - len(dataset_report["validated_symbols"]),
+        }
+        sessions = pd.to_datetime(events["session_date"]).dt.date
+        control_sessions = pd.to_datetime(controls["session_date"]).dt.date if not controls.empty else pd.Series([], dtype=object)
+        temporal_report = {
+            **temporal_report,
+            "event_rows_outside_discovery": int(((sessions < DISCOVERY_START) | (sessions > DISCOVERY_END)).sum()),
+            "control_rows_outside_discovery": int(((control_sessions < DISCOVERY_START) | (control_sessions > DISCOVERY_END)).sum()),
+            "horizons_crossing_session_or_period": int((
+                pd.to_datetime(paths["horizon_target_timestamp"], utc=True).dt.tz_convert(TIMEZONE).dt.date
+                != pd.to_datetime(paths["session_date"]).dt.date
+            ).sum()),
+        }
+        integrity = derive_integrity_criteria(
+            causal_integrity_report=causal_report,
+            dataset_contract_report=dataset_report,
+            manifest_validation_report=manifest_report,
+            temporal_access_report=temporal_report,
+            path_metrics=paths,
+            decision_variants=preflight["config"].get("decision_variants"),
+        )
         controlled = build_exact_time_control(paths, controls)
         primary = controlled[controlled["horizon"] == PRIMARY_HORIZON].copy()
         progress.record("events_paths_controls", events=len(events), primary_rows=len(primary))
         intervals = clustered_percentile_bootstrap(primary)
         concentration = annual_concentration(primary)
         loo = leave_one_largest_session_out(primary)
-        metrics = _gate_metric_mapping(primary, intervals, concentration.value, loo)
+        metrics = _gate_metric_mapping(primary, intervals, concentration.value, loo, integrity)
         statuses = derive_substantive_criteria(metrics, preflight["config"]["discovery_gate"]["criteria"])
         gate = classify_gate(statuses)
         progress.record("aggregations_and_bootstrap")
@@ -528,6 +672,7 @@ def run_discovery(request: DiscoveryRequest) -> Mapping[str, Any]:
             concentration=concentration,
             loo=loo,
             gate=gate,
+            integrity_criteria=integrity,
             progress=progress,
         )
         _finalize_temp_inventory(temp_dir, progress)

@@ -123,6 +123,16 @@ class GateResult:
     validation_2025_unlocked: bool
 
 
+@dataclass(frozen=True)
+class CriterionResult:
+    """One integrity criterion with its derived value and evidence."""
+
+    criterion_id: str
+    value: Any
+    passed: bool
+    evidence: Mapping[str, Any]
+
+
 def canonical_payload_bytes(mapping: Mapping[str, Any]) -> bytes:
     """Serialize every YAML field except the self-referential hash."""
 
@@ -459,8 +469,40 @@ def round_trip_cost(executable_price: float, profile: str) -> float:
     raise ValueError(f"Unknown cost profile: {profile}")
 
 
-def compute_path_metrics(events: pd.DataFrame, bars: pd.DataFrame) -> pd.DataFrame:
-    """Compute required same-session horizons, returns, excursions, and costs."""
+def _official_close_for(
+    session_date: date | str,
+    official_session_closes: Mapping[date, pd.Timestamp],
+) -> pd.Timestamp:
+    session = pd.Timestamp(session_date).date()
+    if session not in official_session_closes:
+        raise ValueError(f"OFFICIAL_SESSION_CLOSE_MISSING: {session}")
+    close = pd.Timestamp(official_session_closes[session])
+    if close.tzinfo is None:
+        raise ValueError(f"OFFICIAL_SESSION_CLOSE_NAIVE: {session}")
+    local = close.tz_convert(TIMEZONE)
+    if local.date() != session:
+        raise ValueError(f"OFFICIAL_SESSION_CLOSE_DATE_MISMATCH: {session}")
+    return close
+
+
+def _path_is_complete(
+    path: pd.DataFrame,
+    start: pd.Timestamp,
+    target: pd.Timestamp,
+) -> bool:
+    if target <= start or path.empty:
+        return False
+    expected = pd.date_range(start, target - _FIVE_MINUTES, freq="5min")
+    actual = pd.DatetimeIndex(path["timestamp"])
+    return bool(len(actual) == len(expected) and actual.equals(expected))
+
+
+def compute_path_metrics(
+    events: pd.DataFrame,
+    bars: pd.DataFrame,
+    official_session_closes: Mapping[date, pd.Timestamp],
+) -> pd.DataFrame:
+    """Compute horizons from execution using approved calendar closes only."""
 
     event_required = {"symbol", "session_date", "direction", "executable_timestamp", "executable_price"}
     bar_required = {"symbol", "session_date", "timestamp", "high", "low", "close"}
@@ -473,24 +515,31 @@ def compute_path_metrics(events: pd.DataFrame, bars: pd.DataFrame) -> pd.DataFra
         start = pd.Timestamp(event.executable_timestamp)
         if start.tzinfo is None:
             raise ValueError("Executable timestamp must be timezone-aware.")
+        session = pd.Timestamp(event.session_date).date()
+        official_close = _official_close_for(session, official_session_closes)
         session_bars = bar_work[
             (bar_work["symbol"] == event.symbol)
-            & (pd.to_datetime(bar_work["session_date"]).dt.date == pd.Timestamp(event.session_date).date())
+            & (pd.to_datetime(bar_work["session_date"]).dt.date == session)
             & (bar_work["timestamp"] >= start)
+            & (bar_work["timestamp"] < official_close)
         ].sort_values("timestamp")
-        if session_bars.empty:
-            raise ValueError("Required path is unavailable.")
-        session_close = session_bars["timestamp"].max() + _FIVE_MINUTES
         for horizon in HORIZONS:
-            target = session_close if horizon == "session_close" else start + _HORIZON_OFFSETS[horizon]
+            target = official_close if horizon == "session_close" else start + _HORIZON_OFFSETS[horizon]
             path = session_bars[(session_bars["timestamp"] >= start) & (session_bars["timestamp"] < target)]
-            if target > session_close or path.empty or path["timestamp"].iloc[-1] + _FIVE_MINUTES != target:
-                raise ValueError(f"Required horizon path is incomplete: {horizon}")
-            future_price = float(path.iloc[-1]["close"])
-            gross = oriented_return(event.direction, float(event.executable_price), future_price)
-            mfe, mae = path_excursions(event.direction, float(event.executable_price), path["high"], path["low"])
             baseline = round_trip_cost(float(event.executable_price), "baseline")
             stress = round_trip_cost(float(event.executable_price), "stress")
+            available = bool(target <= official_close and _path_is_complete(path, start, target))
+            if available:
+                future_price = float(path.iloc[-1]["close"])
+                gross = oriented_return(event.direction, float(event.executable_price), future_price)
+                mfe, mae = path_excursions(
+                    event.direction,
+                    float(event.executable_price),
+                    path["high"],
+                    path["low"],
+                )
+            else:
+                future_price = gross = mfe = mae = np.nan
             output.append({
                 "symbol": event.symbol,
                 "session_date": pd.Timestamp(event.session_date).date(),
@@ -499,15 +548,17 @@ def compute_path_metrics(events: pd.DataFrame, bars: pd.DataFrame) -> pd.DataFra
                 "executable_timestamp": start,
                 "executable_price": float(event.executable_price),
                 "horizon": horizon,
+                "horizon_target_timestamp": target,
                 "future_price": future_price,
                 "gross_return": gross,
                 "mfe": mfe,
                 "mae": mae,
                 "baseline_cost": baseline,
                 "stress_cost": stress,
-                "baseline_net_return": gross - baseline,
-                "stress_net_return": gross - stress,
-                "path_complete": True,
+                "baseline_net_return": gross - baseline if available else np.nan,
+                "stress_net_return": gross - stress if available else np.nan,
+                "horizon_available": available,
+                "path_complete": available,
             })
     return pd.DataFrame(output)
 
@@ -552,7 +603,11 @@ def build_exact_time_control(events: pd.DataFrame, controls: pd.DataFrame) -> pd
     return event_work
 
 
-def build_unconditional_candidates(events: pd.DataFrame, bars: pd.DataFrame) -> pd.DataFrame:
+def build_unconditional_candidates(
+    events: pd.DataFrame,
+    bars: pd.DataFrame,
+    official_session_closes: Mapping[date, pd.Timestamp],
+) -> pd.DataFrame:
     """Build raw exact-time returns from every eligible discovery session."""
 
     event_required = {"symbol", "session_date", "executable_timestamp"}
@@ -578,18 +633,19 @@ def build_unconditional_candidates(events: pd.DataFrame, bars: pd.DataFrame) -> 
             & (bar_work["session_date"].map(lambda value: value.year) == key.year)
         ]
         for session, group in sessions.groupby("session_date", sort=True):
+            official_close = _official_close_for(session, official_session_closes)
             ordered = group.sort_values("timestamp", kind="stable")
+            ordered = ordered[ordered["timestamp"] < official_close]
             starts = ordered[ordered["timestamp"].dt.strftime("%H:%M") == key.executable_hhmm]
             if len(starts) != 1:
                 continue
             start_row = starts.iloc[0]
             start = pd.Timestamp(start_row["timestamp"])
             executable_price = float(start_row["open"])
-            session_close = ordered["timestamp"].max() + _FIVE_MINUTES
             for horizon in HORIZONS:
-                target = session_close if horizon == "session_close" else start + _HORIZON_OFFSETS[horizon]
+                target = official_close if horizon == "session_close" else start + _HORIZON_OFFSETS[horizon]
                 path = ordered[(ordered["timestamp"] >= start) & (ordered["timestamp"] < target)]
-                if target > session_close or path.empty or path["timestamp"].iloc[-1] + _FIVE_MINUTES != target:
+                if target > official_close or not _path_is_complete(path, start, target):
                     continue
                 future_price = float(path.iloc[-1]["close"])
                 output.append({
@@ -601,6 +657,145 @@ def build_unconditional_candidates(events: pd.DataFrame, bars: pd.DataFrame) -> 
                     "gross_return": oriented_return(Direction.LONG, executable_price, future_price),
                 })
     return pd.DataFrame(output)
+
+
+def _report_value(report: Any, key: str) -> Any:
+    if report is None:
+        return None
+    if isinstance(report, Mapping):
+        return report.get(key)
+    return getattr(report, key, None)
+
+
+def _strict_bool(value: Any) -> bool | None:
+    return value if isinstance(value, bool) else None
+
+
+def _nonnegative_int(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+        return None
+    return int(value) if value >= 0 else None
+
+
+def derive_integrity_criteria(
+    *,
+    causal_integrity_report: Any,
+    dataset_contract_report: Any,
+    manifest_validation_report: Any,
+    temporal_access_report: Any,
+    path_metrics: pd.DataFrame | None,
+    decision_variants: Any,
+) -> Mapping[str, CriterionResult]:
+    """Derive INT-01..INT-08 conservatively from explicit run evidence."""
+
+    causal_passed = _strict_bool(
+        _report_value(causal_integrity_report, "causal_integrity_passed")
+    )
+    dataset_passed = _strict_bool(
+        _report_value(dataset_contract_report, "dataset_contract_passed")
+    )
+    manifest_passed = _strict_bool(
+        _report_value(manifest_validation_report, "manifest_validation_passed")
+    )
+    lookahead = _nonnegative_int(
+        _report_value(causal_integrity_report, "lookahead_violations")
+    )
+    quality = _nonnegative_int(
+        _report_value(causal_integrity_report, "unresolved_data_quality_failures")
+    )
+    temporal_fields = (
+        "materialized_rows_after_discovery_end",
+        "historical_2025_rows_materialized",
+        "historical_2026_rows_materialized",
+        "event_rows_outside_discovery",
+        "control_rows_outside_discovery",
+        "horizons_crossing_session_or_period",
+    )
+    temporal_counts = {
+        key: _nonnegative_int(_report_value(temporal_access_report, key))
+        for key in temporal_fields
+    }
+    temporal_valid = all(value is not None for value in temporal_counts.values())
+    contamination = None if not temporal_valid else any(
+        value != 0 for value in temporal_counts.values() if value is not None
+    )
+    path_evidence: dict[str, Any] = {"rows": None, "incomplete_rows": None}
+    paths_passed = False
+    if isinstance(path_metrics, pd.DataFrame) and not path_metrics.empty:
+        required = {
+            "symbol", "session_date", "executable_timestamp", "horizon",
+            "horizon_available", "path_complete",
+        }
+        if required.issubset(path_metrics.columns):
+            work = path_metrics.copy()
+            available = work["horizon_available"].map(_strict_bool)
+            complete = work["path_complete"].map(_strict_bool)
+            keys = ["symbol", "session_date", "executable_timestamp"]
+            horizon_sets = work.groupby(keys, dropna=False)["horizon"].agg(set)
+            horizon_counts = work.groupby(keys, dropna=False)["horizon"].size()
+            exact_horizons = bool(
+                len(horizon_sets) > 0
+                and horizon_sets.map(lambda values: values == set(HORIZONS)).all()
+                and horizon_counts.eq(len(HORIZONS)).all()
+            )
+            flags_valid = available.notna().all() and complete.notna().all()
+            paths_passed = bool(
+                flags_valid and exact_horizons and available.all() and complete.all()
+            )
+            path_evidence = {
+                "rows": len(work),
+                "event_groups": len(horizon_sets),
+                "exact_required_horizons": exact_horizons,
+                "incomplete_rows": int(
+                    sum(value is not True for value in complete.tolist())
+                ),
+                "unavailable_rows": int(
+                    sum(value is not True for value in available.tolist())
+                ),
+            }
+    variants = _nonnegative_int(decision_variants)
+    values = {
+        "INT-01": causal_passed,
+        "INT-02": dataset_passed,
+        "INT-03": manifest_passed,
+        "INT-04": lookahead,
+        "INT-05": quality,
+        "INT-06": contamination,
+        "INT-07": paths_passed,
+        "INT-08": variants,
+    }
+    passed = {
+        "INT-01": causal_passed is True,
+        "INT-02": dataset_passed is True,
+        "INT-03": manifest_passed is True,
+        "INT-04": lookahead == 0,
+        "INT-05": quality == 0,
+        "INT-06": contamination is False,
+        "INT-07": paths_passed is True,
+        "INT-08": variants == 1,
+    }
+    evidence = {
+        "INT-01": {"causal_integrity_passed": causal_passed},
+        "INT-02": {"dataset_contract_passed": dataset_passed},
+        "INT-03": {"manifest_validation_passed": manifest_passed},
+        "INT-04": {"lookahead_violations": lookahead},
+        "INT-05": {"unresolved_data_quality_failures": quality},
+        "INT-06": temporal_counts,
+        "INT-07": path_evidence,
+        "INT-08": {"decision_variants": variants},
+    }
+    return {
+        criterion_id: CriterionResult(
+            criterion_id,
+            values[criterion_id],
+            passed[criterion_id],
+            evidence[criterion_id],
+        )
+        for criterion_id in (
+            "INT-01", "INT-02", "INT-03", "INT-04", "INT-05", "INT-06",
+            "INT-07", "INT-08",
+        )
+    }
 
 
 def clustered_percentile_bootstrap(
